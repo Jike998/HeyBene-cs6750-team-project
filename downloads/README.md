@@ -24,6 +24,9 @@ Use:
 
 - Releases page: <https://github.com/Jike998/HeyBene-cs6750-team-project/releases>
 - release instructions: `docs/releases/team-build-release-checklist.md`
+- fallback download links:
+  - `control_app`: <https://drive.google.com/file/d/155Xqbi4ChW1p0FqazVg9a3PDAoNcy21A/view?usp=sharing>
+  - `robot_app`: <https://drive.google.com/file/d/19NxdyigiTyACQJaqd52NI3z4Qv1NgxVv/view?usp=sharing>
 
 Expected release assets:
 
@@ -42,4 +45,3 @@ Expected release assets:
 - for Mac teammates, the most practical option is the Android Studio Emulator:
   <https://developer.android.com/studio/run/emulator>
 - emulator use is good for UI review and basic flow demos, but not for USB, bluetooth, or real hardware validation
-

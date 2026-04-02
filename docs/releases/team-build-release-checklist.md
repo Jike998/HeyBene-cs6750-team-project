@@ -50,3 +50,9 @@ Notes:
 6. Paste the suggested release notes
 7. Publish the release
 
+## Temporary Fallback
+
+If GitHub Release upload fails in the current network environment, use the existing Google Drive links for teammates:
+
+- `control_app`: <https://drive.google.com/file/d/155Xqbi4ChW1p0FqazVg9a3PDAoNcy21A/view?usp=sharing>
+- `robot_app`: <https://drive.google.com/file/d/19NxdyigiTyACQJaqd52NI3z4Qv1NgxVv/view?usp=sharing>
