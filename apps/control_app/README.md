@@ -22,6 +22,7 @@ control_app/
     core/                   # theme, constants, shared UI primitives
     features/
       control/              # active controller UI flow
+    legacy/                 # archived non-mainline scaffold
     services/               # camera, USB, bluetooth, OpenBene adapters
   test/
 ```
@@ -41,8 +42,9 @@ control_app/
 
 ## Notes
 
-- some earlier robot-side scaffolding still exists in this app folder from past experiments, but the active team-project entry path is the control flow listed above
-- for repo-wide context, read `../../docs/architecture.md`
+- archived robot-side experiments now live under `lib/legacy/robot_shell`
+- the active team-project entry path is the control flow listed above
+- for repo-wide context, read `../../docs/architecture.md` and `../../CONTRIBUTING.md`
 
 ## Run
 
@@ -51,4 +53,3 @@ cd C:\Users\jiken\Desktop\openbot-ui\apps\control_app
 flutter pub get
 flutter run
 ```
-

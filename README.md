@@ -40,8 +40,9 @@ openbot-ui/
 
 1. Read `docs/architecture.md`.
 2. Read `docs/onboarding.md`.
-3. Pick one app as your primary area.
-4. Use `docs/status/team-sync-template.md` when syncing progress with teammates.
+3. Read `CONTRIBUTING.md`.
+4. Pick one app as your primary area.
+5. Use `docs/status/team-sync-template.md` when syncing progress with teammates.
 
 ## Run The Apps
 
@@ -66,6 +67,7 @@ flutter run
 - UI-first contributors should spend most of their time in `lib/features` and `lib/core`.
 - hardware/backend integration should be isolated behind `lib/services` and later `packages/openbene_bridge`.
 - teammates without hardware should still be able to contribute through UI, state, design review, and mock-oriented planning.
+- `apps/control_app/lib/legacy` is archive code, not a mainline feature area.
 
 ## References
 
@@ -73,4 +75,3 @@ Reference repositories that informed this workspace but were not modified here:
 
 - `C:/Users/jiken/Desktop/OpenBene/openbot-mobile-control`
 - `C:/Users/jiken/Desktop/Openbot/OpenBot-master/OpenBot-master`
-

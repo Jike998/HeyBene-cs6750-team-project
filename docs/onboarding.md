@@ -7,6 +7,7 @@ Start with:
 - `README.md`
 - `docs/architecture.md`
 - `docs/run-modes.md`
+- `CONTRIBUTING.md`
 
 ## 2. Pick A Primary App
 
@@ -61,4 +62,3 @@ Recommended rhythm:
 - what you are doing now
 - what is blocked
 - what someone else can review or pick up
-

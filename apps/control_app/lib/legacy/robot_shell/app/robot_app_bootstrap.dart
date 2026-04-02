@@ -1,7 +1,7 @@
-import '../services/openbene_camera_service_adapter.dart';
-import '../services/bluetooth_controller_link_service_adapter.dart';
-import '../services/openbene_robot_connection_adapter.dart';
-import '../services/android_gamepad_service_adapter.dart';
+import '../../../services/android_gamepad_service_adapter.dart';
+import '../../../services/bluetooth_controller_link_service_adapter.dart';
+import '../../../services/openbene_camera_service_adapter.dart';
+import '../../../services/openbene_robot_connection_adapter.dart';
 
 class RobotAppBootstrap {
   RobotAppBootstrap({

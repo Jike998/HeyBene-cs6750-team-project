@@ -30,6 +30,23 @@ packages/
   shared_models/
 ```
 
+## Active Vs Archived Paths
+
+### Active
+
+- `apps/control_app/lib/app/control_app.dart`
+- `apps/control_app/lib/features/control`
+- `apps/robot_app/lib/app`
+- `apps/robot_app/lib/features`
+- `apps/*/lib/services`
+- `packages/*`
+
+### Archived
+
+- `apps/control_app/lib/legacy/robot_shell`
+- `apps/controller_app`
+- `docs/design`
+
 ## App-Level Structure
 
 Both Flutter apps follow the same high-level layering:
@@ -87,3 +104,4 @@ If a teammate cannot access hardware, they should still be able to contribute sa
 - `shared_models`
 - `mock_services`
 
+For day-to-day collaboration rules, read `../CONTRIBUTING.md`.
