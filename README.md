@@ -23,6 +23,9 @@ openbot-ui/
     design/
     migration/
     status/
+  downloads/
+    README.md
+    android/
   packages/
     mock_services/
     openbene_bridge/
@@ -43,6 +46,7 @@ openbot-ui/
 3. Read `CONTRIBUTING.md`.
 4. Pick one app as your primary area.
 5. Use `docs/status/team-sync-template.md` when syncing progress with teammates.
+6. Use `downloads/README.md` if you want installable reference apps for demos or team onboarding.
 
 ## Run The Apps
 
