@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OpenBot Controller App Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+
+      html, body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+        background: #020617;
+      }
+
+      .glass {
+        background: rgba(15, 23, 42, 0.42);
+        border: 1px solid rgba(255,255,255,0.12);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+        box-shadow: 0 24px 70px rgba(2,6,23,0.28);
+      }
+
+      .control-zone {
+        background: radial-gradient(circle at center, rgba(255,255,255,0.06), rgba(255,255,255,0.01) 58%, transparent 78%);
+        border: 1px solid rgba(255,255,255,0.06);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 50px rgba(2,6,23,0.24);
+      }
+
+      .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #020617;
+      }
+
+      .feed {
+        position: absolute;
+        inset: -4%;
+        background-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80');
+        background-size: cover;
+        background-position: center;
+        filter: saturate(0.95) contrast(1.02);
+        transform: scale(1.08);
+      }
+
+      .drive-stick {
+        width: 140px;
+        height: 140px;
+        border-radius: 999px;
+        position: relative;
+        border: 1px solid rgba(255,255,255,0.16);
+        background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.2), rgba(255,255,255,0.06) 42%, rgba(15,23,42,0.36) 100%);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 20px 50px rgba(2,6,23,0.34);
+        touch-action: none;
+      }
+
+      .drive-thumb {
+        width: 58px;
+        height: 58px;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.14));
+        border: 1px solid rgba(255,255,255,0.22);
+        box-shadow: 0 10px 30px rgba(2,6,23,0.34);
+        transition: transform 110ms ease;
+      }
+
+      .arrow-key {
+        min-width: 86px;
+        min-height: 60px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.08);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        transition: transform 120ms ease, background-color 120ms ease;
+      }
+
+      .arrow-key:active {
+        transform: scale(0.97);
+        background: rgba(255,255,255,0.16);
+      }
+
+      .layout-chip {
+        transition: opacity 180ms ease, background-color 180ms ease;
+      }
+
+      .layout-chip[data-active='true'] {
+        background: rgba(255,255,255,0.14);
+        color: white;
+      }
+
+      .layout-chip[data-active='false'] {
+        opacity: 0.58;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell text-white">
+      <div class="feed"></div>
+      <div class="absolute inset-0 bg-gradient-to-b from-slate-950/74 via-slate-950/18 to-slate-950/88"></div>
+
+      <section class="absolute inset-x-0 top-0 z-20 px-5 pt-4">
+        <div class="flex items-center justify-between gap-4">
+          <button class="glass rounded-full px-4 py-2 text-sm text-white/86">Back</button>
+          <div class="glass rounded-full px-4 py-2 text-sm text-white/86">Controller App · Landscape</div>
+          <button id="layoutToggle" class="glass rounded-full px-4 py-2 text-sm text-white/86">Arrow</button>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <div class="glass rounded-full px-4 py-2 text-xs text-white/78">BT Connected</div>
+          <div class="glass rounded-full px-4 py-2 text-xs text-white/78">Video Preview Live</div>
+          <div class="glass rounded-full px-4 py-2 text-xs text-white/78">Battery 84%</div>
+        </div>
+      </section>
+
+      <section class="absolute inset-x-0 bottom-0 z-20 px-5 pb-5">
+        <div class="flex items-end justify-between gap-10">
+          <div class="control-zone flex min-h-[220px] min-w-[220px] items-end justify-start rounded-[42px] p-5">
+            <div id="dualLayoutLeft" class="flex items-end">
+              <div class="glass rounded-[32px] p-4">
+                <p class="mb-3 text-xs uppercase tracking-[0.22em] text-white/46">Steering</p>
+                <div id="leftStick" class="drive-stick">
+                  <div id="leftThumb" class="drive-thumb"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="arrowLayoutLeft" class="hidden items-end">
+              <div class="glass rounded-[32px] p-4">
+                <p class="mb-3 text-xs uppercase tracking-[0.22em] text-white/46">Direction</p>
+                <div class="grid grid-cols-2 gap-3">
+                  <button class="arrow-key text-2xl text-white/90" data-arrow="left">←</button>
+                  <button class="arrow-key text-2xl text-white/90" data-arrow="right">→</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pointer-events-none flex-1"></div>
+
+          <div class="control-zone flex min-h-[220px] min-w-[220px] items-end justify-end rounded-[42px] p-5">
+            <div id="dualLayoutRight" class="flex items-end">
+              <div class="glass rounded-[32px] p-4">
+                <p class="mb-3 text-xs uppercase tracking-[0.22em] text-white/46">Throttle</p>
+                <div id="rightStick" class="drive-stick">
+                  <div id="rightThumb" class="drive-thumb"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="arrowLayoutRight" class="hidden items-end">
+              <div class="glass rounded-[32px] p-4">
+                <p class="mb-3 text-xs uppercase tracking-[0.22em] text-white/46">Motion</p>
+                <div class="grid grid-cols-1 gap-3">
+                  <button class="arrow-key text-xl font-semibold text-white/90" data-arrow="forward">Forward</button>
+                  <button class="arrow-key text-xl font-semibold text-white/90" data-arrow="brake">Brake</button>
+                  <button class="arrow-key text-xl font-semibold text-white/90" data-arrow="reverse">Reverse</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
+        <div class="pointer-events-auto glass flex items-center gap-3 rounded-full px-4 py-2 text-xs text-white/78">
+          <div class="flex items-center gap-1 rounded-full bg-white/6 p-1">
+            <button class="layout-chip rounded-full px-3 py-1.5" data-layout="dual">Dual</button>
+            <button class="layout-chip rounded-full px-3 py-1.5" data-layout="arrow">Arrow</button>
+          </div>
+          <button id="stopButton" class="rounded-full bg-red-500/88 px-4 py-2 font-semibold text-white shadow-lg shadow-red-950/30">Stop</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        layout: 'dual',
+        leftPointerId: null,
+        rightPointerId: null,
+        speed: 0,
+        steer: 0,
+      };
+
+      const els = {
+        layoutToggle: document.getElementById('layoutToggle'),
+        dualLayoutLeft: document.getElementById('dualLayoutLeft'),
+        dualLayoutRight: document.getElementById('dualLayoutRight'),
+        arrowLayoutLeft: document.getElementById('arrowLayoutLeft'),
+        arrowLayoutRight: document.getElementById('arrowLayoutRight'),
+        leftStick: document.getElementById('leftStick'),
+        rightStick: document.getElementById('rightStick'),
+        leftThumb: document.getElementById('leftThumb'),
+        rightThumb: document.getElementById('rightThumb'),
+        stopButton: document.getElementById('stopButton'),
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function render() {
+        document.querySelectorAll('[data-layout]').forEach((button) => {
+          button.dataset.active = button.dataset.layout === state.layout;
+        });
+        els.dualLayoutLeft.classList.toggle('hidden', state.layout !== 'dual');
+        els.dualLayoutLeft.classList.toggle('flex', state.layout === 'dual');
+        els.dualLayoutRight.classList.toggle('hidden', state.layout !== 'dual');
+        els.dualLayoutRight.classList.toggle('flex', state.layout === 'dual');
+        els.arrowLayoutLeft.classList.toggle('hidden', state.layout !== 'arrow');
+        els.arrowLayoutLeft.classList.toggle('flex', state.layout === 'arrow');
+        els.arrowLayoutRight.classList.toggle('hidden', state.layout !== 'arrow');
+        els.arrowLayoutRight.classList.toggle('flex', state.layout === 'arrow');
+        els.layoutToggle.textContent = state.layout === 'dual' ? 'Arrow' : 'Dual';
+      }
+
+      function setLayout(layout) {
+        state.layout = layout;
+        render();
+      }
+
+      function updateStick(side, x, y) {
+        const radius = 40;
+        const magnitude = Math.hypot(x, y);
+        const scale = magnitude > radius ? radius / magnitude : 1;
+        const clampedX = x * scale;
+        const clampedY = y * scale;
+
+        if (side === 'left') {
+          state.steer = clamp(clampedX / radius, -1, 1);
+          els.leftThumb.style.transform = `translate(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px))`;
+        } else {
+          state.speed = clamp(-clampedY / radius, -1, 1);
+          els.rightThumb.style.transform = `translate(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px))`;
+        }
+
+        render();
+      }
+
+      function resetStick(side) {
+        if (side === 'left') {
+          state.leftPointerId = null;
+          state.steer *= 0.12;
+          els.leftThumb.style.transform = 'translate(-50%, -50%)';
+        } else {
+          state.rightPointerId = null;
+          state.speed *= 0.12;
+          els.rightThumb.style.transform = 'translate(-50%, -50%)';
+        }
+        render();
+      }
+
+      els.layoutToggle.addEventListener('click', () => setLayout(state.layout === 'dual' ? 'arrow' : 'dual'));
+      document.querySelectorAll('[data-layout]').forEach((button) => {
+        button.addEventListener('click', () => setLayout(button.dataset.layout));
+      });
+
+      els.leftStick.addEventListener('pointerdown', (event) => {
+        if (state.layout !== 'dual') return;
+        state.leftPointerId = event.pointerId;
+        els.leftStick.setPointerCapture(event.pointerId);
+        const rect = els.leftStick.getBoundingClientRect();
+        updateStick('left', event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
+      });
+
+      els.leftStick.addEventListener('pointermove', (event) => {
+        if (state.leftPointerId !== event.pointerId) return;
+        const rect = els.leftStick.getBoundingClientRect();
+        updateStick('left', event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
+      });
+
+      els.rightStick.addEventListener('pointerdown', (event) => {
+        if (state.layout !== 'dual') return;
+        state.rightPointerId = event.pointerId;
+        els.rightStick.setPointerCapture(event.pointerId);
+        const rect = els.rightStick.getBoundingClientRect();
+        updateStick('right', event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
+      });
+
+      els.rightStick.addEventListener('pointermove', (event) => {
+        if (state.rightPointerId !== event.pointerId) return;
+        const rect = els.rightStick.getBoundingClientRect();
+        updateStick('right', event.clientX - rect.left - rect.width / 2, event.clientY - rect.top - rect.height / 2);
+      });
+
+      els.leftStick.addEventListener('pointerup', () => resetStick('left'));
+      els.leftStick.addEventListener('pointercancel', () => resetStick('left'));
+      els.leftStick.addEventListener('lostpointercapture', () => resetStick('left'));
+      els.rightStick.addEventListener('pointerup', () => resetStick('right'));
+      els.rightStick.addEventListener('pointercancel', () => resetStick('right'));
+      els.rightStick.addEventListener('lostpointercapture', () => resetStick('right'));
+
+      document.querySelectorAll('[data-arrow]').forEach((button) => {
+        button.addEventListener('pointerdown', () => {
+          if (button.dataset.arrow === 'left') state.steer = -0.72;
+          if (button.dataset.arrow === 'right') state.steer = 0.72;
+          if (button.dataset.arrow === 'forward') state.speed = 0.82;
+          if (button.dataset.arrow === 'reverse') state.speed = -0.46;
+          if (button.dataset.arrow === 'brake') state.speed = 0;
+          render();
+        });
+        button.addEventListener('pointerup', () => {
+          if (button.dataset.arrow === 'left' || button.dataset.arrow === 'right') state.steer *= 0.12;
+          if (button.dataset.arrow === 'forward' || button.dataset.arrow === 'reverse' || button.dataset.arrow === 'brake') state.speed *= 0.12;
+          render();
+        });
+        button.addEventListener('pointercancel', () => {
+          state.speed *= 0.12;
+          state.steer *= 0.12;
+          render();
+        });
+      });
+
+      els.stopButton.addEventListener('click', () => {
+        state.speed = 0;
+        state.steer = 0;
+        els.leftThumb.style.transform = 'translate(-50%, -50%)';
+        els.rightThumb.style.transform = 'translate(-50%, -50%)';
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+# Mainline team-project scope
+/apps/controller_app/
+/Individual Project/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub/
+**/.pub-cache/
+**/build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Android / Gradle / IDE
+**/.gradle/
+**/.gradle-local/
+**/.gradle-user/
+**/.gradle-user-home/
+**/.idea/
+**/*.iml
+**/android/local.properties
+
+# Logs and local diagnostics
+**/*.log
+**/*.out
+**/*.err
+

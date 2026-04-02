@@ -1,0 +1,1573 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../domain/control_layout.dart';
+import '../state/control_controller.dart';
+import '../state/control_state.dart';
+
+class ControlScreen extends StatelessWidget {
+  const ControlScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<ControlState>();
+    final controller = context.watch<ControlController>();
+    final safePadding = MediaQuery.paddingOf(context);
+
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _SceneBackground(
+            showCamera: state.showCamera,
+            cameraController: controller.cameraController,
+          ),
+          const _SceneOverlay(),
+          const _TopScrim(),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: IgnorePointer(
+              child: Container(
+                height: 224,
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color.fromRGBO(16, 19, 28, 0.20),
+                      Color.fromRGBO(10, 12, 18, 0.72),
+                    ],
+                  ),
+                  border: Border(
+                    top: BorderSide(color: Color.fromRGBO(255, 255, 255, 0.08)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 22,
+                  left: 22,
+                  right: 22,
+                  child: _TopBar(state: state),
+                ),
+                if (state.initializationError != null)
+                  Positioned(
+                    top: 84,
+                    left: 22,
+                    child: _InfoPill(
+                      label: state.initializationError!,
+                      tone: _PillTone.warning,
+                      compact: true,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            bottom: safePadding.bottom + 18,
+            width: 248,
+            height: 142,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child:
+                  state.layout == ControlLayout.dual
+                      ? _DualSteeringPad(
+                        key: const ValueKey('dual-left'),
+                        value: state.dualSteering,
+                      )
+                      : _ArrowSteeringCluster(
+                        key: const ValueKey('arrow-left'),
+                        steering: state.arrowSteering,
+                        leftPressed: state.arrowLeftPressed,
+                        rightPressed: state.arrowRightPressed,
+                      ),
+            ),
+          ),
+          Positioned(
+            right: 18,
+            bottom: safePadding.bottom + 14,
+            width: 176,
+            height: 194,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child:
+                  state.layout == ControlLayout.dual
+                      ? _DualThrottlePad(
+                        key: const ValueKey('dual-right'),
+                        value: state.dualThrottle,
+                      )
+                      : _PedalCluster(
+                        key: const ValueKey('arrow-right'),
+                        goPressed: state.goPressed,
+                        stopPressed: state.stopPressed,
+                      ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SceneBackground extends StatelessWidget {
+  const _SceneBackground({
+    required this.showCamera,
+    required this.cameraController,
+  });
+
+  final bool showCamera;
+  final CameraController? cameraController;
+
+  @override
+  Widget build(BuildContext context) {
+    final previewController = cameraController;
+    if (showCamera &&
+        previewController != null &&
+        previewController.value.isInitialized) {
+      final previewSize = previewController.value.previewSize;
+      if (previewSize == null) {
+        return const SizedBox.expand();
+      }
+
+      final previewAspectRatio = previewSize.height / previewSize.width;
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final screenAspectRatio =
+              constraints.maxHeight / constraints.maxWidth;
+          final scale = previewAspectRatio / screenAspectRatio;
+
+          return ClipRect(
+            child: Transform.scale(
+              scale: scale < 1 ? 1 / scale : scale,
+              child: Center(child: CameraPreview(previewController)),
+            ),
+          );
+        },
+      );
+    }
+
+    return Transform.scale(
+      scale: 1.08,
+      child: Image.asset(
+        'assets/images/robot-road-background.jpg',
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+      ),
+    );
+  }
+}
+
+class _SceneOverlay extends StatelessWidget {
+  const _SceneOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.fromRGBO(6, 10, 18, 0.18),
+            Color.fromRGBO(9, 14, 24, 0.08),
+            Color.fromRGBO(8, 12, 22, 0.48),
+          ],
+          stops: [0, 0.28, 1],
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.03),
+              Colors.transparent,
+              const Color(0xFF66D7FF).withValues(alpha: 0.05),
+            ],
+            stops: const [0, 0.56, 1],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopScrim extends StatelessWidget {
+  const _TopScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          height: 122,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.fromRGBO(5, 8, 14, 0.72),
+                Color.fromRGBO(5, 8, 14, 0.16),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.state});
+
+  final ControlState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.read<ControlController>();
+    final bluetoothLinked = state.connection.usbConnected;
+    final latency = state.telemetry.latency;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _InfoPill(
+              label: bluetoothLinked ? 'BT Linked' : 'BT Link',
+              tone: bluetoothLinked ? _PillTone.good : _PillTone.danger,
+              onTap:
+                  state.usbBusy
+                      ? null
+                      : () {
+                        unawaited(
+                          _handleBluetoothTap(context, controller),
+                        );
+                      },
+            ),
+            const SizedBox(width: 12),
+            _InfoPill(
+              label: bluetoothLinked && latency > 0 ? '${latency}ms' : '--',
+              tone: switch ((bluetoothLinked, latency)) {
+                (false, _) => _PillTone.danger,
+                (true, <= 0) => _PillTone.danger,
+                (true, <= 60) => _PillTone.good,
+                (true, <= 120) => _PillTone.warning,
+                _ => _PillTone.danger,
+              },
+            ),
+          ],
+        ),
+        const Spacer(),
+        _ModeSwitcher(layout: state.layout, onSelected: controller.setLayout),
+      ],
+    );
+  }
+
+  Future<void> _handleBluetoothTap(
+    BuildContext context,
+    ControlController controller,
+  ) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await controller.toggleRobotLink();
+  }
+}
+
+enum _PillTone { good, warning, danger }
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.label,
+    required this.tone,
+    this.compact = false,
+    this.onTap,
+  });
+
+  final String label;
+  final _PillTone tone;
+  final bool compact;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradientColors = switch (tone) {
+      _PillTone.good => const [Color(0x8D284432), Color(0x6E1F3828)],
+      _PillTone.warning => const [Color(0x9565482B), Color(0x7348331D)],
+      _PillTone.danger => const [Color(0x97543C45), Color(0x74382730)],
+    };
+    final borderColor = switch (tone) {
+      _PillTone.good => const Color(0x28FFFFFF),
+      _PillTone.warning => const Color(0x2EFFF2D9),
+      _PillTone.danger => const Color(0x30FFE2E5),
+    };
+    final foreground = switch (tone) {
+      _PillTone.good => const Color(0xFFF3FFF6),
+      _PillTone.warning => const Color(0xFFFFF9EE),
+      _PillTone.danger => const Color(0xFFFFF3F5),
+    };
+
+    final pill = _GlassPanel(
+      borderRadius: BorderRadius.circular(999),
+      blurSigma: 22,
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: gradientColors,
+      ),
+      innerGradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.10),
+          Colors.white.withValues(alpha: 0.03),
+          Colors.transparent,
+        ],
+        stops: const [0, 0.32, 1],
+      ),
+      borderColor: borderColor,
+      boxShadow: const [
+        BoxShadow(
+          color: Color.fromRGBO(0, 0, 0, 0.22),
+          blurRadius: 20,
+          offset: Offset(0, 8),
+        ),
+      ],
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 16,
+        vertical: compact ? 8 : 10,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: compact ? 11 : 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+
+    if (onTap == null) return pill;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: pill,
+    );
+  }
+}
+
+class _BondedRobotPicker extends StatelessWidget {
+  const _BondedRobotPicker({required this.devices});
+
+  final List<Map<String, dynamic>> devices;
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedDevices = [...devices]
+      ..sort((left, right) {
+        final leftLastUsed = left['lastUsed'] == true;
+        final rightLastUsed = right['lastUsed'] == true;
+        if (leftLastUsed != rightLastUsed) {
+          return leftLastUsed ? -1 : 1;
+        }
+        final leftName = (left['name']?.toString() ?? '').toLowerCase();
+        final rightName = (right['name']?.toString() ?? '').toLowerCase();
+        return leftName.compareTo(rightName);
+      });
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, 0, 14, math.max(14, bottomInset + 8)),
+        child: _GlassPanel(
+          borderRadius: BorderRadius.circular(28),
+          blurSigma: 28,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xCC11161F), Color(0xC4171C26)],
+          ),
+          innerGradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x18FFFFFF), Color(0x06FFFFFF)],
+          ),
+          borderColor: const Color(0x34FFFFFF),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.28),
+              blurRadius: 26,
+              offset: Offset(0, 18),
+            ),
+          ],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Choose Robot Phone',
+                    style: TextStyle(
+                      color: Color(0xFFF2F5FF),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Select a bonded Android device running robot_app.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.68),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: sortedDevices.length,
+                      separatorBuilder:
+                          (context, index) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final device = sortedDevices[index];
+                        final name =
+                            device['name']?.toString().trim().isNotEmpty == true
+                                ? device['name'].toString().trim()
+                                : 'Robot phone';
+                        final address = device['address']?.toString() ?? '';
+                        final lastUsed = device['lastUsed'] == true;
+                        return _BondedRobotTile(
+                          name: name,
+                          address: address,
+                          lastUsed: lastUsed,
+                          onTap: () {
+                            Navigator.of(context).pop(address);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BondedRobotTile extends StatelessWidget {
+  const _BondedRobotTile({
+    required this.name,
+    required this.address,
+    required this.lastUsed,
+    required this.onTap,
+  });
+
+  final String name;
+  final String address;
+  final bool lastUsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: _GlassPanel(
+        borderRadius: BorderRadius.circular(22),
+        blurSigma: 18,
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x4AFFFFFF), Color(0x18FFFFFF)],
+        ),
+        innerGradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x16FFFFFF), Color(0x04FFFFFF)],
+        ),
+        borderColor: const Color(0x2FFFFFFF),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFF5F8FF),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.60),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (lastUsed) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: const Color(0x2A8BFFB1),
+                  border: Border.all(color: const Color(0x4095FFC0)),
+                ),
+                child: const Text(
+                  'Last',
+                  style: TextStyle(
+                    color: Color(0xFFDFFFE9),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withValues(alpha: 0.74),
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeSwitcher extends StatelessWidget {
+  const _ModeSwitcher({required this.layout, required this.onSelected});
+
+  final ControlLayout layout;
+  final Future<void> Function(ControlLayout value) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPanel(
+      borderRadius: BorderRadius.circular(28),
+      blurSigma: 24,
+      gradient: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0x85161E30), Color(0x66141B29)],
+      ),
+      innerGradient: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0x18FFFFFF), Color(0x06FFFFFF)],
+      ),
+      borderColor: const Color(0x38FFFFFF),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeChip(
+            label: 'Dual',
+            active: layout == ControlLayout.dual,
+            onTap: () {
+              onSelected(ControlLayout.dual);
+            },
+          ),
+          _ModeChip(
+            label: 'Arrow',
+            active: layout == ControlLayout.arrow,
+            onTap: () {
+              onSelected(ControlLayout.arrow);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({
+    required this.borderRadius,
+    required this.gradient,
+    required this.borderColor,
+    this.child,
+    this.innerGradient,
+    this.padding = EdgeInsets.zero,
+    this.blurSigma = 18,
+    this.boxShadow = const [],
+  });
+
+  final BorderRadius borderRadius;
+  final Gradient gradient;
+  final Color borderColor;
+  final Widget? child;
+  final Gradient? innerGradient;
+  final EdgeInsetsGeometry padding;
+  final double blurSigma;
+  final List<BoxShadow> boxShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: borderRadius,
+            border: Border.all(color: borderColor),
+            boxShadow: boxShadow,
+          ),
+          child: Container(
+            margin: innerGradient != null ? const EdgeInsets.all(1) : null,
+            decoration:
+                innerGradient == null
+                    ? null
+                    : BoxDecoration(
+                      borderRadius: borderRadius,
+                      gradient: innerGradient,
+                    ),
+            child:
+                child == null ? null : Padding(padding: padding, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        width: 96,
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient:
+              active
+                  ? const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x67FFFFFF), Color(0x44FFFFFF)],
+                  )
+                  : const LinearGradient(
+                    colors: [Colors.transparent, Colors.transparent],
+                  ),
+          border: active ? Border.all(color: const Color(0x52FFFFFF)) : null,
+        ),
+        alignment: Alignment.center,
+        child: Opacity(
+          opacity: active ? 1 : 0.62,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFEEF3FF),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DualSteeringPad extends StatelessWidget {
+  const _DualSteeringPad({super.key, required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: _StickPad(valueX: value, valueY: 0),
+    );
+  }
+}
+
+class _DualThrottlePad extends StatelessWidget {
+  const _DualThrottlePad({super.key, required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: _StickPad(valueX: 0, valueY: -value),
+    );
+  }
+}
+
+class _StickPad extends StatelessWidget {
+  const _StickPad({required this.valueX, required this.valueY});
+
+  final double valueX;
+  final double valueY;
+
+  @override
+  Widget build(BuildContext context) {
+    final intensity = math.max(valueX.abs(), valueY.abs()).clamp(0.0, 1.0);
+    final thumbOffset = Offset(valueX * 26, valueY * 26);
+
+    return SizedBox(
+      width: 126,
+      height: 126,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const RadialGradient(
+            center: Alignment(-0.18, -0.20),
+            radius: 0.96,
+            colors: [
+              Color.fromRGBO(255, 255, 255, 0.14),
+              Color.fromRGBO(28, 31, 40, 0.86),
+              Color.fromRGBO(10, 12, 18, 0.96),
+            ],
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.32),
+              blurRadius: 24,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 86 + (intensity * 18),
+              height: 86 + (intensity * 18),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(
+                      0xFF8BC6FF,
+                    ).withValues(alpha: 0.34 + intensity * 0.18),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              width: 94 + (intensity * 10),
+              height: 94 + (intensity * 10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(
+                    alpha: 0.14 + intensity * 0.18,
+                  ),
+                ),
+              ),
+            ),
+            Transform.translate(
+              offset: thumbOffset,
+              child: Transform.scale(
+                scale: 1 + intensity * 0.14,
+                child: Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(
+                      center: Alignment(-0.24, -0.30),
+                      colors: [
+                        Color.fromRGBO(255, 255, 255, 0.76),
+                        Color.fromRGBO(185, 194, 214, 0.66),
+                        Color.fromRGBO(64, 70, 84, 0.94),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color.fromRGBO(0, 0, 0, 0.28),
+                        blurRadius: 14,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArrowSteeringCluster extends StatelessWidget {
+  const _ArrowSteeringCluster({
+    super.key,
+    required this.steering,
+    required this.leftPressed,
+    required this.rightPressed,
+  });
+
+  final double steering;
+  final bool leftPressed;
+  final bool rightPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: SizedBox(
+        width: 224,
+        height: 100,
+        child: _GlassPanel(
+          borderRadius: BorderRadius.circular(38),
+          blurSigma: 24,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x72F6ECEF), Color(0x32D1C7CC), Color(0x46E8DDE1)],
+          ),
+          innerGradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x2EFFFFFF), Color(0x14FFFFFF)],
+          ),
+          borderColor: const Color(0x60FFFFFF),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.24),
+              blurRadius: 24,
+              offset: Offset(0, 14),
+            ),
+          ],
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                left: 12,
+                child: _DirectionButton(
+                  direction: AxisDirection.left,
+                  active: leftPressed,
+                ),
+              ),
+              Positioned(
+                right: 12,
+                child: _DirectionButton(
+                  direction: AxisDirection.right,
+                  active: rightPressed,
+                ),
+              ),
+              Container(
+                width: 46,
+                height: 20,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0x08FFFFFF), Color(0x15FFFFFF)],
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _trackTick(8, 0.58),
+                    _trackTick(6, 0.40),
+                    _trackTick(10, 0.62, width: 2),
+                    _trackTick(6, 0.40),
+                    _trackTick(8, 0.58),
+                  ],
+                ),
+              ),
+              Transform.translate(
+                offset: Offset(steering * 38, 0),
+                child: Transform.rotate(
+                  angle: steering * 0.78,
+                  child: _SteeringWheelGlyph(
+                    size: 34,
+                    color: Colors.white.withValues(alpha: 0.96),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _trackTick(double height, double opacity, {double width = 1}) {
+    return Container(
+      width: width,
+      height: height,
+      margin: const EdgeInsets.symmetric(horizontal: 1.5),
+      color: Colors.white.withValues(alpha: opacity),
+    );
+  }
+}
+
+class _DirectionButton extends StatelessWidget {
+  const _DirectionButton({required this.direction, required this.active});
+
+  final AxisDirection direction;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient =
+        active
+            ? const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x40FFFFFF), Color(0x1EFFFFFF)],
+            )
+            : const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x18FFFFFF), Color(0x0BFFFFFF)],
+            );
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      scale: active ? 0.985 : 1,
+      child: SizedBox(
+        width: 62,
+        height: 62,
+        child: _GlassPanel(
+          borderRadius: BorderRadius.circular(30),
+          blurSigma: 18,
+          gradient: gradient,
+          borderColor:
+              active ? const Color(0x50FFFFFF) : const Color(0x2CFFFFFF),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.14),
+              blurRadius: 12,
+              offset: Offset(0, 8),
+            ),
+          ],
+          child: Center(
+            child: Transform.scale(
+              scale: active ? 1.06 : 1,
+              child: _DoubleChevronGlyph(
+                direction: direction,
+                size: 30,
+                color: Colors.white.withValues(alpha: active ? 0.98 : 0.92),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PedalCluster extends StatelessWidget {
+  const _PedalCluster({
+    super.key,
+    required this.goPressed,
+    required this.stopPressed,
+  });
+
+  final bool goPressed;
+  final bool stopPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: SizedBox(
+        width: 118,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _PedalButton(
+              width: 118,
+              height: 112,
+              active: goPressed,
+              label: 'GO',
+              tint: const Color(0xFFB9F5C4),
+              textTint: const Color(0x7EA8F1B0),
+              glyph: const _AccelerateChevronGlyph(),
+              borderRadius: BorderRadius.circular(30),
+              defaultGradientColors: const [
+                Color(0xA794A890),
+                Color(0x8E728D79),
+                Color(0x73506E57),
+              ],
+              activeGradientColors: const [
+                Color(0xA57E9F88),
+                Color(0x7B54745C),
+              ],
+              defaultBorderColor: const Color(0x64D6F0D2),
+              activeBorderColor: const Color(0x7DD9F4D7),
+              plateGradientColors: const [Color(0x80C0D4C1), Color(0x46749074)],
+              plateBorderColor: const Color(0x54DDF4E2),
+              plateBorderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(24),
+              ),
+              plateWidth: 62,
+              plateHeight: 78,
+              glyphSize: 50,
+              glyphTop: 16,
+              labelBottom: 14,
+              labelSize: 12,
+            ),
+            const SizedBox(height: 10),
+            _PedalButton(
+              width: 92,
+              height: 64,
+              active: stopPressed,
+              label: 'STOP',
+              tint: const Color(0xFFF1A2A8),
+              textTint: const Color(0x7EF4A0A6),
+              glyph: const _BrakeChevronGlyph(),
+              borderRadius: BorderRadius.circular(22),
+              defaultGradientColors: const [
+                Color(0xAA74575A),
+                Color(0x965F3F42),
+                Color(0x854A292D),
+              ],
+              activeGradientColors: const [
+                Color(0xB0774D4F),
+                Color(0x8E5E3034),
+              ],
+              defaultBorderColor: const Color(0x60F1B9BD),
+              activeBorderColor: const Color(0x70F0BCBF),
+              plateGradientColors: const [Color(0x736E4346), Color(0x3C6D373B)],
+              plateBorderColor: const Color(0x48F0B0B5),
+              plateBorderRadius: const BorderRadius.all(Radius.circular(18)),
+              plateWidth: 58,
+              plateHeight: 42,
+              glyphSize: 30,
+              glyphTop: 8,
+              labelBottom: 6,
+              labelSize: 9,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PedalButton extends StatelessWidget {
+  const _PedalButton({
+    required this.width,
+    required this.height,
+    required this.active,
+    required this.label,
+    required this.tint,
+    required this.textTint,
+    required this.glyph,
+    required this.borderRadius,
+    required this.defaultGradientColors,
+    required this.activeGradientColors,
+    required this.defaultBorderColor,
+    required this.activeBorderColor,
+    required this.plateGradientColors,
+    required this.plateBorderColor,
+    required this.plateBorderRadius,
+    required this.plateWidth,
+    required this.plateHeight,
+    required this.glyphSize,
+    required this.glyphTop,
+    required this.labelBottom,
+    required this.labelSize,
+  });
+
+  final double width;
+  final double height;
+  final bool active;
+  final String label;
+  final Color tint;
+  final Color textTint;
+  final Widget glyph;
+  final BorderRadius borderRadius;
+  final List<Color> defaultGradientColors;
+  final List<Color> activeGradientColors;
+  final Color defaultBorderColor;
+  final Color activeBorderColor;
+  final List<Color> plateGradientColors;
+  final Color plateBorderColor;
+  final BorderRadius plateBorderRadius;
+  final double plateWidth;
+  final double plateHeight;
+  final double glyphSize;
+  final double glyphTop;
+  final double labelBottom;
+  final double labelSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final outerColors = active ? activeGradientColors : defaultGradientColors;
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      scale: active ? 0.97 : 1,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: _GlassPanel(
+            borderRadius: borderRadius,
+            blurSigma: 20,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: outerColors,
+            ),
+            innerGradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.white.withValues(alpha: active ? 0.16 : 0.10),
+                Colors.white.withValues(alpha: 0.04),
+                Colors.transparent,
+              ],
+              stops: const [0, 0.24, 1],
+            ),
+            borderColor: active ? activeBorderColor : defaultBorderColor,
+            boxShadow: [
+              BoxShadow(
+                color: tint.withValues(alpha: active ? 0.18 : 0.08),
+                blurRadius: active ? 24 : 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  top: 8,
+                  left: 12,
+                  right: 12,
+                  child: IgnorePointer(
+                    child: Container(
+                      height: height * 0.24,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.18),
+                            Colors.white.withValues(alpha: 0.02),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: plateWidth,
+                  height: plateHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: plateBorderRadius,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: plateGradientColors,
+                    ),
+                    border: Border.all(color: plateBorderColor),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: glyphTop),
+                    child: ColorFiltered(
+                      colorFilter: ColorFilter.mode(tint, BlendMode.srcIn),
+                      child: SizedBox(
+                        width: glyphSize,
+                        height: glyphSize,
+                        child: glyph,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: labelBottom,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: textTint,
+                      fontSize: labelSize,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SteeringWheelGlyph extends StatelessWidget {
+  const _SteeringWheelGlyph({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(painter: _SteeringWheelPainter(color: color)),
+    );
+  }
+}
+
+class _SteeringWheelPainter extends CustomPainter {
+  const _SteeringWheelPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokePaint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.09
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+
+    final hubPaint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.082
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+
+    final center = size.center(Offset.zero);
+    final radius = size.width * 0.40;
+    final rimRect = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawArc(rimRect, 0, math.pi * 2, false, strokePaint);
+
+    final topArcRect = Rect.fromCircle(center: center, radius: radius * 0.72);
+    canvas.drawArc(topArcRect, math.pi * 1.12, math.pi * 0.76, false, hubPaint);
+
+    final hubPath =
+        Path()
+          ..moveTo(center.dx, center.dy)
+          ..lineTo(
+            center.dx - (size.width * 0.18),
+            center.dy - (size.height * 0.04),
+          )
+          ..moveTo(center.dx, center.dy)
+          ..lineTo(
+            center.dx + (size.width * 0.18),
+            center.dy - (size.height * 0.04),
+          )
+          ..moveTo(center.dx, center.dy)
+          ..lineTo(
+            center.dx - (size.width * 0.10),
+            center.dy + (size.height * 0.23),
+          )
+          ..moveTo(center.dx, center.dy)
+          ..lineTo(
+            center.dx + (size.width * 0.10),
+            center.dy + (size.height * 0.23),
+          );
+    canvas.drawPath(hubPath, hubPaint);
+
+    canvas.drawCircle(
+      center,
+      size.width * 0.07,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SteeringWheelPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _DoubleChevronGlyph extends StatelessWidget {
+  const _DoubleChevronGlyph({
+    required this.direction,
+    required this.size,
+    required this.color,
+  });
+
+  final AxisDirection direction;
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _DoubleChevronPainter(direction: direction, color: color),
+      ),
+    );
+  }
+}
+
+class _DoubleChevronPainter extends CustomPainter {
+  const _DoubleChevronPainter({required this.direction, required this.color});
+
+  final AxisDirection direction;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 48, size.height / 48);
+
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
+
+    final leadingPath = Path();
+    final trailingPath = Path();
+    if (direction == AxisDirection.left) {
+      leadingPath
+        ..moveTo(28, 10)
+        ..lineTo(15, 24)
+        ..lineTo(28, 38)
+        ..lineTo(33, 33)
+        ..lineTo(24, 24)
+        ..lineTo(33, 15)
+        ..close();
+      trailingPath
+        ..moveTo(17, 10)
+        ..lineTo(4, 24)
+        ..lineTo(17, 38)
+        ..lineTo(22, 33)
+        ..lineTo(13, 24)
+        ..lineTo(22, 15)
+        ..close();
+    } else {
+      leadingPath
+        ..moveTo(20, 10)
+        ..lineTo(15, 15)
+        ..lineTo(24, 24)
+        ..lineTo(15, 33)
+        ..lineTo(20, 38)
+        ..lineTo(33, 24)
+        ..close();
+      trailingPath
+        ..moveTo(31, 10)
+        ..lineTo(26, 15)
+        ..lineTo(35, 24)
+        ..lineTo(26, 33)
+        ..lineTo(31, 38)
+        ..lineTo(44, 24)
+        ..close();
+    }
+
+    canvas.drawPath(leadingPath, paint);
+    canvas.drawPath(trailingPath, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _DoubleChevronPainter oldDelegate) {
+    return oldDelegate.direction != direction || oldDelegate.color != color;
+  }
+}
+
+class _AccelerateChevronGlyph extends StatelessWidget {
+  const _AccelerateChevronGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CustomPaint(painter: _AccelerateChevronPainter());
+  }
+}
+
+class _AccelerateChevronPainter extends CustomPainter {
+  const _AccelerateChevronPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 32, size.height / 32);
+
+    final paints = [
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.62)
+        ..style = PaintingStyle.fill,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.78)
+        ..style = PaintingStyle.fill,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill,
+    ];
+    final paths = [
+      Path()
+        ..moveTo(8, 23)
+        ..lineTo(15, 16)
+        ..lineTo(8, 9)
+        ..lineTo(10.8, 6.2)
+        ..lineTo(20.6, 16)
+        ..lineTo(10.8, 25.8)
+        ..close(),
+      Path()
+        ..moveTo(13, 23)
+        ..lineTo(20, 16)
+        ..lineTo(13, 9)
+        ..lineTo(15.8, 6.2)
+        ..lineTo(25.6, 16)
+        ..lineTo(15.8, 25.8)
+        ..close(),
+      Path()
+        ..moveTo(18, 23)
+        ..lineTo(25, 16)
+        ..lineTo(18, 9)
+        ..lineTo(20.8, 6.2)
+        ..lineTo(30.6, 16)
+        ..lineTo(20.8, 25.8)
+        ..close(),
+    ];
+
+    for (var i = 0; i < paths.length; i++) {
+      canvas.drawPath(paths[i], paints[i]);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _BrakeChevronGlyph extends StatelessWidget {
+  const _BrakeChevronGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CustomPaint(painter: _BrakeChevronPainter());
+  }
+}
+
+class _BrakeChevronPainter extends CustomPainter {
+  const _BrakeChevronPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 32, size.height / 32);
+
+    final paints = [
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.48)
+        ..style = PaintingStyle.fill,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.72)
+        ..style = PaintingStyle.fill,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill,
+    ];
+    final paths = [
+      Path()
+        ..moveTo(9, 6.4)
+        ..lineTo(16, 13.4)
+        ..lineTo(23, 6.4)
+        ..lineTo(25.8, 9.2)
+        ..lineTo(16, 19)
+        ..lineTo(6.2, 9.2)
+        ..close(),
+      Path()
+        ..moveTo(9, 12.4)
+        ..lineTo(16, 19.4)
+        ..lineTo(23, 12.4)
+        ..lineTo(25.8, 15.2)
+        ..lineTo(16, 25)
+        ..lineTo(6.2, 15.2)
+        ..close(),
+      Path()
+        ..moveTo(9, 18.4)
+        ..lineTo(16, 25.4)
+        ..lineTo(23, 18.4)
+        ..lineTo(25.8, 21.2)
+        ..lineTo(16, 31)
+        ..lineTo(6.2, 21.2)
+        ..close(),
+    ];
+
+    for (var i = 0; i < paths.length; i++) {
+      canvas.drawPath(paths[i], paints[i]);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

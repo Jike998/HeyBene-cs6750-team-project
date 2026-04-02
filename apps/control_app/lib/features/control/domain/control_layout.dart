@@ -1,0 +1,4 @@
+enum ControlLayout {
+  dual,
+  arrow,
+}

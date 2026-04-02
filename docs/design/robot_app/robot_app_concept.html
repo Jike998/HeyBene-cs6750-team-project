@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OpenBot Robot App Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            boxShadow: {
+              glow: '0 0 0 1px rgba(255,255,255,0.12), 0 24px 70px rgba(15,23,42,0.45)',
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --safe-top: max(env(safe-area-inset-top), 14px);
+        --safe-bottom: max(env(safe-area-inset-bottom), 18px);
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+        background: #020617;
+      }
+
+      .glass {
+        background: rgba(15, 23, 42, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+        box-shadow: 0 24px 70px rgba(2, 6, 23, 0.38);
+      }
+
+      .glass-soft {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .feed-image {
+        position: absolute;
+        inset: -4%;
+        background-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80');
+        background-size: cover;
+        background-position: center;
+        filter: saturate(0.96) contrast(1.03);
+        animation: drift 24s ease-in-out infinite alternate;
+      }
+
+      @keyframes drift {
+        from { transform: scale(1.04) translate3d(-0.6%, -0.4%, 0); }
+        to { transform: scale(1.1) translate3d(0.8%, 0.4%, 0); }
+      }
+
+      .status-dot {
+        animation: pulseDot 1.8s ease-in-out infinite;
+      }
+
+      @keyframes pulseDot {
+        0%, 100% { transform: scale(1); opacity: 0.82; }
+        50% { transform: scale(1.35); opacity: 1; }
+      }
+
+      .tracking-box {
+        position: absolute;
+        width: 104px;
+        height: 104px;
+        border-radius: 26px;
+        border: 2px solid rgba(103, 232, 249, 0.96);
+        background: rgba(103, 232, 249, 0.08);
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.24) inset, 0 0 40px rgba(34, 211, 238, 0.26);
+        pointer-events: none;
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+        transition: transform 220ms ease, opacity 220ms ease;
+      }
+
+      .tracking-box.active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .tracking-corners::before,
+      .tracking-corners::after,
+      .tracking-inner::before,
+      .tracking-inner::after {
+        content: '';
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        border-color: rgba(255,255,255,0.88);
+      }
+
+      .tracking-corners::before { top: 10px; left: 10px; border-top: 2px solid; border-left: 2px solid; border-radius: 12px 0 0 0; }
+      .tracking-corners::after { top: 10px; right: 10px; border-top: 2px solid; border-right: 2px solid; border-radius: 0 12px 0 0; }
+      .tracking-inner::before { bottom: 10px; left: 10px; border-bottom: 2px solid; border-left: 2px solid; border-radius: 0 0 0 12px; }
+      .tracking-inner::after { bottom: 10px; right: 10px; border-bottom: 2px solid; border-right: 2px solid; border-radius: 0 0 12px 0; }
+
+      .mode-chip,
+      .model-chip {
+        transition: transform 220ms ease, opacity 220ms ease, color 220ms ease, background-color 220ms ease;
+      }
+
+      .mode-chip[data-active='true'],
+      .model-chip[data-active='true'] {
+        color: white;
+        background: rgba(255,255,255,0.14);
+        transform: translateY(-1px) scale(1.04);
+      }
+
+      .mode-chip[data-active='false'],
+      .model-chip[data-active='false'] {
+        opacity: 0.52;
+      }
+
+      .sheet {
+        height: 172px;
+        transition: height 260ms cubic-bezier(0.22, 1, 0.36, 1);
+        overflow: hidden;
+        touch-action: none;
+      }
+
+      .sheet.expanded {
+        height: min(58vh, 500px);
+      }
+
+      .app-shell {
+        position: relative;
+        height: 100%;
+        width: 100%;
+        max-width: 430px;
+        margin: 0 auto;
+        overflow: hidden;
+        background: #020617;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 40px 120px rgba(2,6,23,0.65);
+      }
+
+      .camera-header {
+        background: linear-gradient(180deg, rgba(2,6,23,0.52), rgba(2,6,23,0.12));
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .mode-strip {
+        background: rgba(2, 6, 23, 0.48);
+        border: 1px solid rgba(255,255,255,0.08);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow: 0 18px 48px rgba(2,6,23,0.38);
+      }
+
+      .icon-button {
+        width: 40px;
+        height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.1);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+
+      .mode-slider {
+        transition: transform 220ms ease, width 220ms ease;
+      }
+
+      .recording-pulse {
+        animation: recordingPulse 1.2s ease-in-out infinite;
+      }
+
+      @keyframes recordingPulse {
+        0%, 100% { opacity: 0.75; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.25); }
+      }
+    </style>
+  </head>
+  <body class="bg-slate-950 md:flex md:items-center md:justify-center md:p-6">
+    <main id="app" class="app-shell text-white md:rounded-[42px] md:border md:border-white/10">
+      <div class="feed-image"></div>
+      <div class="absolute inset-0 bg-gradient-to-b from-slate-950/72 via-slate-950/14 to-slate-950/86"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,transparent_48%,rgba(2,6,23,0.38)_100%)]"></div>
+
+      <section class="camera-header absolute inset-x-0 top-0 z-20 px-4 pb-4" style="padding-top: var(--safe-top);">
+        <div class="flex items-center justify-between gap-3 py-1">
+          <button class="icon-button text-lg text-white/88">‹</button>
+          <div class="text-center">
+            <p class="text-[11px] uppercase tracking-[0.28em] text-white/46">Robot App</p>
+            <p id="modeStatus" class="mt-1 text-sm font-semibold text-white">Drive ready</p>
+          </div>
+          <button id="expandSensorsButton" class="icon-button text-xs text-white/88">Data</button>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <button id="bluetoothPill" class="glass-soft flex items-center gap-2 rounded-full px-3 py-2 text-[11px] font-medium text-emerald-100">
+              <span>⌁</span><span>BT</span>
+            </button>
+            <button id="usbPill" class="glass-soft flex items-center gap-2 rounded-full px-3 py-2 text-[11px] font-medium text-sky-100">
+              <span>⎓</span><span>USB</span>
+            </button>
+          </div>
+          <div class="glass-soft flex items-center gap-2 rounded-full px-3 py-2 text-[11px] text-white/80">
+            <span class="text-white/46">Battery</span>
+            <span id="batteryTop" class="font-semibold text-white">86%</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="feedLayer" class="absolute inset-0 z-10 cursor-crosshair">
+        <!-- Direct manipulation: Track mode lets the user tap directly on the feed to expose what the AI should follow. -->
+        <div id="trackingBox" class="tracking-box">
+          <div class="tracking-corners absolute inset-0"></div>
+          <div class="tracking-inner absolute inset-0"></div>
+          <div class="absolute -top-9 left-1/2 -translate-x-1/2 rounded-full bg-cyan-400/18 px-3 py-1 text-[11px] font-medium text-cyan-100 backdrop-blur-md">
+            <span id="trackingLabel">Target locked</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="absolute inset-x-0 top-[118px] z-20 px-4">
+        <div class="mx-auto flex max-w-sm items-center justify-end gap-3">
+          <button id="stopButton" class="rounded-full bg-red-500/88 px-4 py-2.5 text-xs font-semibold shadow-lg shadow-red-950/35 transition hover:bg-red-400/92">
+            Stop
+          </button>
+        </div>
+      </section>
+
+      <!-- Progressive disclosure: detailed robot status stays in a bottom sheet instead of covering the camera by default. -->
+      <section id="bottomSheet" class="sheet glass absolute inset-x-0 bottom-0 z-30 rounded-t-[34px] px-4 pt-3 pb-5">
+        <button id="sheetHandle" class="mx-auto mb-3 block h-1.5 w-12 rounded-full bg-white/30"></button>
+
+        <div id="sheetHeader" class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[11px] uppercase tracking-[0.24em] text-white/45">Robot telemetry</p>
+            <p id="sheetTitle" class="mt-1 text-base font-semibold">Robot is ready for remote drive</p>
+          </div>
+          <div id="sheetBadge" class="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/65">
+            Pull for details
+          </div>
+        </div>
+
+        <div id="sheetPeek" class="mt-4 grid grid-cols-4 gap-2 text-center">
+          <div class="glass-soft rounded-2xl px-2 py-3">
+            <p class="text-[10px] uppercase tracking-[0.18em] text-white/45">Latency</p>
+            <p id="latencyText" class="mt-1 text-sm font-semibold">42 ms</p>
+          </div>
+          <div class="glass-soft rounded-2xl px-2 py-3">
+            <p class="text-[10px] uppercase tracking-[0.18em] text-white/45">Speed</p>
+            <p id="speedText" class="mt-1 text-sm font-semibold">0.34</p>
+          </div>
+          <div class="glass-soft rounded-2xl px-2 py-3">
+            <p class="text-[10px] uppercase tracking-[0.18em] text-white/45">Steer</p>
+            <p id="steeringText" class="mt-1 text-sm font-semibold">0.08</p>
+          </div>
+          <div class="glass-soft rounded-2xl px-2 py-3">
+            <p class="text-[10px] uppercase tracking-[0.18em] text-white/45">Confidence</p>
+            <p id="confidenceText" class="mt-1 text-sm font-semibold">91%</p>
+          </div>
+        </div>
+
+        <div id="sheetExpandedContent" class="mt-4 hidden space-y-3 pb-2">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="glass-soft rounded-3xl p-4">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-white/45">Connections</p>
+              <div class="mt-3 space-y-2 text-sm text-white/85">
+                <div class="flex items-center justify-between"><span>Bluetooth</span><span id="btStatus">Connected</span></div>
+                <div class="flex items-center justify-between"><span>USB-C</span><span id="usbStatus">Ready</span></div>
+                <div class="flex items-center justify-between"><span>Video link</span><span id="videoStatus">Stable</span></div>
+              </div>
+            </div>
+            <div class="glass-soft rounded-3xl p-4">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-white/45">Sensors</p>
+              <div class="mt-3 space-y-2 text-sm text-white/85">
+                <div class="flex items-center justify-between"><span>Battery</span><span id="batterySheet">86%</span></div>
+                <div class="flex items-center justify-between"><span>Voltage</span><span id="voltageText">7.9 V</span></div>
+                <div class="flex items-center justify-between"><span>Distance</span><span id="distanceText">1.8 m</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="glass-soft rounded-3xl p-4">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-[11px] uppercase tracking-[0.18em] text-white/45">Mode detail</p>
+                <span id="modeBadge" class="rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">Drive</span>
+              </div>
+              <p id="modeExplanation" class="mt-3 text-sm leading-6 text-white/82">
+                Robot is ready to be teleoperated by a separate controller app while preserving the camera feed.
+              </p>
+            </div>
+            <div class="glass-soft rounded-3xl p-4">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-white/45">Session</p>
+              <div class="mt-3 space-y-2 text-sm text-white/85">
+                <div class="flex items-center justify-between"><span>Auto model</span><span id="driveProfileText">Remote drive</span></div>
+                <div class="flex items-center justify-between"><span>Samples</span><span id="sampleCountText">248</span></div>
+                <div class="flex items-center justify-between"><span>Target</span><span id="targetStatusText">None</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4" style="padding-bottom: calc(var(--safe-bottom) + 178px);">
+        <div class="mx-auto flex w-full max-w-sm items-end justify-end gap-4">
+          <div class="pointer-events-auto flex flex-col items-end gap-3">
+            <button id="collectToggle" class="hidden rounded-full bg-white/12 px-4 py-2.5 text-sm font-medium text-white/88 shadow-glow backdrop-blur-md border border-white/10">
+              Start collect
+            </button>
+            <div id="autoModelPicker" class="hidden mode-strip rounded-full px-2 py-2 text-sm text-white/78">
+              <div class="flex items-center gap-1">
+                <button class="model-chip rounded-full px-3 py-2" data-model="Lite">Lite</button>
+                <button class="model-chip rounded-full px-3 py-2" data-model="Balanced">Balanced</button>
+                <button class="model-chip rounded-full px-3 py-2" data-model="Precision">Precision</button>
+              </div>
+            </div>
+            <div class="mode-strip rounded-full px-2 py-2">
+              <div id="modeSelector" class="relative flex items-center gap-1 text-sm font-medium text-white/76">
+                <div id="modeSlider" class="mode-slider absolute left-0 top-1/2 -z-0 h-[38px] w-[86px] -translate-y-1/2 rounded-full bg-white/14"></div>
+                <button class="mode-chip rounded-full px-4 py-2.5" data-mode="Drive">Drive</button>
+                <button class="mode-chip rounded-full px-4 py-2.5" data-mode="Auto">Auto</button>
+                <button class="mode-chip rounded-full px-4 py-2.5" data-mode="Track">Track</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="recordingBadge" class="pointer-events-none absolute left-1/2 top-[96px] z-20 hidden -translate-x-1/2 rounded-full bg-rose-500/80 px-4 py-2 text-xs font-semibold shadow-lg shadow-rose-950/30 backdrop-blur-md">
+        <span class="mr-2 inline-block h-2 w-2 rounded-full bg-white recording-pulse"></span>
+        Collecting data
+      </div>
+    </main>
+
+    <script>
+      const modes = ['Drive', 'Auto', 'Track'];
+      const modeDescriptions = {
+        Drive: 'Robot is ready to be teleoperated by a separate controller app while preserving the camera feed.',
+        Auto: 'Autonomy status is summarized in plain language while users can switch between onboard driving models.',
+        Track: 'Tap directly on the scene to lock onto a target and make AI intent visible.',
+      };
+      const modeStatusText = {
+        Drive: 'Drive ready',
+        Auto: 'Auto-roam active',
+        Track: 'Track awaiting target',
+      };
+
+      const state = {
+        currentMode: 'Drive',
+        currentAutoModel: 'Balanced',
+        isCollecting: false,
+        sheetExpanded: false,
+        connections: { bluetooth: true, usb: true },
+        tracking: { active: false, x: 0, y: 0, status: 'Target locked' },
+        telemetry: {
+          battery: 86,
+          latency: 42,
+          speed: 0.34,
+          steering: 0.08,
+          confidence: 91,
+          voltage: 7.9,
+          distance: 1.8,
+          samples: 248,
+        },
+      };
+
+      const els = {
+        feedLayer: document.getElementById('feedLayer'),
+        trackingBox: document.getElementById('trackingBox'),
+        trackingLabel: document.getElementById('trackingLabel'),
+        modeStatus: document.getElementById('modeStatus'),
+        batteryTop: document.getElementById('batteryTop'),
+        batterySheet: document.getElementById('batterySheet'),
+        latencyText: document.getElementById('latencyText'),
+        speedText: document.getElementById('speedText'),
+        steeringText: document.getElementById('steeringText'),
+        confidenceText: document.getElementById('confidenceText'),
+        voltageText: document.getElementById('voltageText'),
+        distanceText: document.getElementById('distanceText'),
+        bottomSheet: document.getElementById('bottomSheet'),
+        sheetHandle: document.getElementById('sheetHandle'),
+        sheetExpandedContent: document.getElementById('sheetExpandedContent'),
+        sheetTitle: document.getElementById('sheetTitle'),
+        sheetBadge: document.getElementById('sheetBadge'),
+        modeBadge: document.getElementById('modeBadge'),
+        modeExplanation: document.getElementById('modeExplanation'),
+        collectToggle: document.getElementById('collectToggle'),
+        autoModelPicker: document.getElementById('autoModelPicker'),
+        modeSelector: document.getElementById('modeSelector'),
+        modeSlider: document.getElementById('modeSlider'),
+        bluetoothPill: document.getElementById('bluetoothPill'),
+        usbPill: document.getElementById('usbPill'),
+        btStatus: document.getElementById('btStatus'),
+        usbStatus: document.getElementById('usbStatus'),
+        videoStatus: document.getElementById('videoStatus'),
+        stopButton: document.getElementById('stopButton'),
+        driveProfileText: document.getElementById('driveProfileText'),
+        sampleCountText: document.getElementById('sampleCountText'),
+        targetStatusText: document.getElementById('targetStatusText'),
+        recordingBadge: document.getElementById('recordingBadge'),
+        expandSensorsButton: document.getElementById('expandSensorsButton'),
+      };
+
+      let swipeStartX = null;
+      let sheetPointerId = null;
+      let sheetStartY = 0;
+      let sheetStartHeight = 172;
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function renderModeUI() {
+        const activeButton = [...document.querySelectorAll('.mode-chip')].find((button) => button.dataset.mode === state.currentMode);
+        document.querySelectorAll('.mode-chip').forEach((button) => {
+          button.dataset.active = button.dataset.mode === state.currentMode;
+        });
+        document.querySelectorAll('.model-chip').forEach((button) => {
+          button.dataset.active = button.dataset.model === state.currentAutoModel;
+        });
+
+        if (activeButton) {
+          els.modeSlider.style.width = `${activeButton.offsetWidth}px`;
+          els.modeSlider.style.transform = `translate(${activeButton.offsetLeft}px, -50%)`;
+        }
+
+        els.modeStatus.textContent = modeStatusText[state.currentMode];
+        els.modeBadge.textContent = state.currentMode;
+        els.modeExplanation.textContent = modeDescriptions[state.currentMode];
+        els.sheetTitle.textContent = {
+          Drive: state.isCollecting ? 'Robot is driving and collecting data' : 'Robot is ready for remote drive',
+          Auto: `Autonomy is steering with ${state.currentAutoModel}`,
+          Track: state.tracking.active ? 'Tracking target on the live feed' : 'Tap the feed to choose a target',
+        }[state.currentMode];
+        els.collectToggle.classList.toggle('hidden', state.currentMode !== 'Drive');
+        els.autoModelPicker.classList.toggle('hidden', state.currentMode !== 'Auto');
+        els.collectToggle.textContent = state.isCollecting ? 'Stop collect' : 'Start collect';
+        els.driveProfileText.textContent = state.currentMode === 'Auto' ? state.currentAutoModel : 'Remote drive';
+        els.recordingBadge.classList.toggle('hidden', !state.isCollecting);
+
+        if (state.currentMode !== 'Track') {
+          state.tracking.active = false;
+          state.tracking.status = 'Target locked';
+        }
+        renderTrackingUI();
+      }
+
+      function renderTrackingUI() {
+        if (state.currentMode === 'Track' && state.tracking.active) {
+          els.trackingBox.classList.add('active');
+          els.trackingBox.style.left = `${state.tracking.x}px`;
+          els.trackingBox.style.top = `${state.tracking.y}px`;
+          els.trackingLabel.textContent = state.tracking.status;
+          els.targetStatusText.textContent = state.tracking.status;
+        } else {
+          els.trackingBox.classList.remove('active');
+          els.targetStatusText.textContent = 'None';
+        }
+      }
+
+      function renderSheetUI() {
+        els.bottomSheet.classList.toggle('expanded', state.sheetExpanded);
+        els.sheetExpandedContent.classList.toggle('hidden', !state.sheetExpanded);
+        els.sheetBadge.textContent = state.sheetExpanded ? 'Swipe down to collapse' : 'Pull for details';
+      }
+
+      function renderTelemetryUI() {
+        els.batteryTop.textContent = `${state.telemetry.battery}%`;
+        els.batterySheet.textContent = `${state.telemetry.battery}%`;
+        els.latencyText.textContent = `${state.telemetry.latency} ms`;
+        els.speedText.textContent = state.telemetry.speed.toFixed(2);
+        els.steeringText.textContent = state.telemetry.steering.toFixed(2);
+        els.confidenceText.textContent = `${Math.round(state.telemetry.confidence)}%`;
+        els.voltageText.textContent = `${state.telemetry.voltage.toFixed(1)} V`;
+        els.distanceText.textContent = `${state.telemetry.distance.toFixed(1)} m`;
+        els.sampleCountText.textContent = `${Math.round(state.telemetry.samples)}`;
+      }
+
+      function renderConnectionUI() {
+        els.bluetoothPill.className = `glass-soft flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium ${state.connections.bluetooth ? 'text-emerald-100' : 'text-red-100'}`;
+        els.usbPill.className = `glass-soft flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium ${state.connections.usb ? 'text-sky-100' : 'text-red-100'}`;
+        els.btStatus.textContent = state.connections.bluetooth ? 'Connected' : 'Disconnected';
+        els.usbStatus.textContent = state.connections.usb ? 'Ready' : 'Disconnected';
+        els.videoStatus.textContent = state.connections.bluetooth && state.connections.usb ? 'Stable' : 'Recovering';
+      }
+
+      function setMode(mode) {
+        state.currentMode = mode;
+        state.telemetry.confidence = {
+          Drive: state.isCollecting ? 88 : 91,
+          Auto: 94,
+          Track: state.tracking.active ? 95 : 81,
+        }[mode];
+        renderModeUI();
+        renderTelemetryUI();
+      }
+
+      function setSheetExpanded(expanded) {
+        state.sheetExpanded = expanded;
+        renderSheetUI();
+      }
+
+      function toggleCollect() {
+        state.isCollecting = !state.isCollecting;
+        state.telemetry.confidence = state.isCollecting ? 88 : 91;
+        renderModeUI();
+        renderTelemetryUI();
+      }
+
+      function setAutoModel(model) {
+        state.currentAutoModel = model;
+        state.telemetry.confidence = model === 'Precision' ? 97 : model === 'Balanced' ? 94 : 89;
+        renderModeUI();
+        renderTelemetryUI();
+      }
+
+      function placeTrackingBox(event) {
+        if (state.currentMode !== 'Track') return;
+        const rect = els.feedLayer.getBoundingClientRect();
+        const x = clamp(event.clientX - rect.left, 58, rect.width - 58);
+        const y = clamp(event.clientY - rect.top, 120, rect.height - 210);
+        state.tracking.active = true;
+        state.tracking.x = x;
+        state.tracking.y = y;
+        state.tracking.status = 'Acquiring…';
+        state.telemetry.confidence = 76;
+        renderTrackingUI();
+        renderTelemetryUI();
+        renderModeUI();
+        window.setTimeout(() => {
+          if (!state.tracking.active || state.currentMode !== 'Track') return;
+          state.tracking.status = 'Target locked';
+          state.telemetry.confidence = 95;
+          renderTrackingUI();
+          renderTelemetryUI();
+          renderModeUI();
+        }, 420);
+      }
+
+      els.modeSelector.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-mode]');
+        if (!button) return;
+        setMode(button.dataset.mode);
+      });
+
+      els.modeSelector.addEventListener('pointerdown', (event) => {
+        swipeStartX = event.clientX;
+      });
+
+      els.modeSelector.addEventListener('pointerup', (event) => {
+        if (swipeStartX === null) return;
+        const delta = event.clientX - swipeStartX;
+        if (Math.abs(delta) > 32) {
+          const currentIndex = modes.indexOf(state.currentMode);
+          const nextIndex = clamp(currentIndex + (delta < 0 ? 1 : -1), 0, modes.length - 1);
+          setMode(modes[nextIndex]);
+        }
+        swipeStartX = null;
+      });
+
+      els.collectToggle.addEventListener('click', toggleCollect);
+      els.autoModelPicker.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-model]');
+        if (!button) return;
+        setAutoModel(button.dataset.model);
+      });
+      els.expandSensorsButton.addEventListener('click', () => setSheetExpanded(!state.sheetExpanded));
+      els.feedLayer.addEventListener('click', placeTrackingBox);
+      els.sheetHandle.addEventListener('click', () => setSheetExpanded(!state.sheetExpanded));
+
+      els.bottomSheet.addEventListener('pointerdown', (event) => {
+        if (!event.target.closest('#sheetHandle') && !event.target.closest('#sheetBadge') && !event.target.closest('#sheetHeader')) return;
+        sheetPointerId = event.pointerId;
+        sheetStartY = event.clientY;
+        sheetStartHeight = els.bottomSheet.getBoundingClientRect().height;
+        els.bottomSheet.setPointerCapture(sheetPointerId);
+      });
+
+      els.bottomSheet.addEventListener('pointermove', (event) => {
+        if (sheetPointerId !== event.pointerId) return;
+        const minHeight = 172;
+        const maxHeight = Math.min(window.innerHeight * 0.58, 500);
+        const delta = sheetStartY - event.clientY;
+        const nextHeight = clamp(sheetStartHeight + delta, minHeight, maxHeight);
+        els.bottomSheet.style.height = `${nextHeight}px`;
+      });
+
+      function releaseSheet(event) {
+        if (sheetPointerId !== event.pointerId) return;
+        const height = els.bottomSheet.getBoundingClientRect().height;
+        sheetPointerId = null;
+        els.bottomSheet.style.height = '';
+        setSheetExpanded(height > 250);
+      }
+
+      els.bottomSheet.addEventListener('pointerup', releaseSheet);
+      els.bottomSheet.addEventListener('pointercancel', releaseSheet);
+      els.bottomSheet.addEventListener('lostpointercapture', () => {
+        sheetPointerId = null;
+        els.bottomSheet.style.height = '';
+      });
+
+      els.stopButton.addEventListener('click', () => {
+        state.telemetry.speed = 0;
+        state.telemetry.steering = 0;
+        if (state.currentMode === 'Track') state.telemetry.confidence = 88;
+        renderTelemetryUI();
+      });
+
+      els.bluetoothPill.addEventListener('click', () => {
+        state.connections.bluetooth = !state.connections.bluetooth;
+        renderConnectionUI();
+      });
+
+      els.usbPill.addEventListener('click', () => {
+        state.connections.usb = !state.connections.usb;
+        renderConnectionUI();
+      });
+
+      window.setInterval(() => {
+        state.telemetry.battery = clamp(state.telemetry.battery + (Math.random() > 0.84 ? -1 : 0), 68, 98);
+        state.telemetry.latency = clamp(Math.round(state.telemetry.latency + (Math.random() * 8 - 4)), 24, 88);
+        state.telemetry.voltage = clamp(state.telemetry.voltage + (Math.random() * 0.08 - 0.04), 7.4, 8.2);
+        state.telemetry.distance = clamp(state.telemetry.distance + (Math.random() * 0.32 - 0.16), 0.8, 3.6);
+        state.telemetry.samples += state.isCollecting ? 3 + Math.random() * 4 : 0.25;
+        if (state.currentMode === 'Auto') {
+          const baseSpeed = state.currentAutoModel === 'Precision' ? 0.28 : state.currentAutoModel === 'Balanced' ? 0.42 : 0.56;
+          const baseConfidence = state.currentAutoModel === 'Precision' ? 97 : state.currentAutoModel === 'Balanced' ? 94 : 89;
+          state.telemetry.speed = clamp(baseSpeed + Math.random() * 0.16, 0, 1);
+          state.telemetry.steering = clamp(Math.random() * 0.26 - 0.13, -1, 1);
+          state.telemetry.confidence = clamp(baseConfidence + Math.random() * 3, 0, 100);
+        }
+        if (state.currentMode === 'Track' && state.tracking.active) {
+          state.telemetry.confidence = clamp(92 + Math.random() * 6, 0, 100);
+        }
+        renderTelemetryUI();
+      }, 1500);
+
+      window.addEventListener('resize', () => renderModeUI());
+
+      renderModeUI();
+      renderSheetUI();
+      renderTelemetryUI();
+      renderConnectionUI();
+    </script>
+  </body>
+</html>
