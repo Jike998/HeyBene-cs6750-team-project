@@ -30,3 +30,5 @@ Thumbs.db
 **/*.out
 **/*.err
 
+# Large local release assets should not be committed directly
+/downloads/android/team-builds/

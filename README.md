@@ -47,6 +47,7 @@ openbot-ui/
 4. Pick one app as your primary area.
 5. Use `docs/status/team-sync-template.md` when syncing progress with teammates.
 6. Use `downloads/README.md` if you want installable reference apps for demos or team onboarding.
+7. Use `docs/releases/team-build-release-checklist.md` when publishing team APKs through GitHub Releases.
 
 ## Run The Apps
 
