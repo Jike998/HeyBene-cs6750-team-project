@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Robot Controller Final Prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07111c;
+        --panel: rgba(9, 19, 31, 0.62);
+        --panel-strong: rgba(9, 19, 31, 0.84);
+        --panel-soft: rgba(18, 31, 45, 0.54);
+        --border: rgba(255, 255, 255, 0.1);
+        --text: rgba(248, 250, 252, 0.98);
+        --muted: rgba(226, 232, 240, 0.66);
+        --good: #4ade80;
+        --warn: #f59e0b;
+        --danger: #fb7185;
+        --accent: #38bdf8;
+        --safe-top: max(14px, env(safe-area-inset-top));
+        --safe-right: max(14px, env(safe-area-inset-right));
+        --safe-bottom: max(14px, env(safe-area-inset-bottom));
+        --safe-left: max(14px, env(safe-area-inset-left));
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Aptos", "Segoe UI Variable", "Bahnschrift", "SF Pro Display", sans-serif;
+        touch-action: none;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      button {
+        font: inherit;
+        color: inherit;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .app {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        height: 100svh;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 18% 14%, rgba(56, 189, 248, 0.12), transparent 24%),
+          radial-gradient(circle at 82% 16%, rgba(74, 222, 128, 0.1), transparent 22%),
+          linear-gradient(180deg, #102034 0%, #09121f 54%, #04090f 100%);
+      }
+
+      .camera-feed {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+          radial-gradient(circle at 50% 28%, rgba(56, 189, 248, 0.05), transparent 18%),
+          linear-gradient(180deg, #1b3145 0%, #122131 34%, #09121c 68%, #04070c 100%);
+      }
+
+      .camera-feed::before {
+        content: "";
+        position: absolute;
+        inset: 4vmin;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+          repeating-linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.016) 0 2px,
+            transparent 2px 7px
+          );
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          inset 0 -120px 160px rgba(2, 6, 23, 0.5),
+          0 36px 120px rgba(2, 6, 23, 0.4);
+      }
+
+      .camera-feed::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.04) 24%, rgba(2, 6, 23, 0.56) 100%),
+          radial-gradient(circle at 50% 48%, transparent 38%, rgba(2, 6, 23, 0.18) 100%);
+      }
+
+      .road-guides {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .road-guides span {
+        position: absolute;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
+        opacity: 0.32;
+        transform-origin: bottom center;
+        animation: road-drift 11s linear infinite;
+      }
+
+      .road-guides .lane-a {
+        left: 36%;
+        height: 58%;
+        transform: rotate(10deg);
+      }
+
+      .road-guides .lane-b {
+        left: 64%;
+        height: 58%;
+        transform: rotate(-10deg);
+      }
+
+      .road-guides .lane-c {
+        left: 50%;
+        height: 32%;
+        transform: translateX(-50%);
+        opacity: 0.18;
+        animation-duration: 8s;
+      }
+
+      .glass {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow:
+          0 18px 60px rgba(2, 6, 23, 0.24),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+
+      .glass-strong {
+        background: var(--panel-strong);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        box-shadow:
+          0 24px 70px rgba(2, 6, 23, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+
+      .floating-role {
+        position: absolute;
+        top: calc(var(--safe-top) + 8px);
+        right: var(--safe-right);
+        z-index: 50;
+      }
+
+      .eyebrow {
+        display: block;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .role-topbar {
+        position: absolute;
+        top: calc(var(--safe-top) + 8px);
+        left: var(--safe-left);
+        right: var(--safe-right);
+        z-index: 34;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 14px 104px 14px 16px;
+        border-radius: 26px;
+      }
+
+      .role-topbar-head {
+        min-width: 126px;
+      }
+
+      .role-topbar-title {
+        display: block;
+        margin-top: 6px;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 0.03em;
+      }
+
+      .role-topbar-sub {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+
+      .role-topbar-chips {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(248, 250, 252, 0.9);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .chip-interactive {
+        cursor: pointer;
+      }
+
+      .chip.good {
+        color: #d1fae5;
+      }
+
+      .chip.warn {
+        color: #fde68a;
+      }
+
+      .chip.bad {
+        color: #fecdd3;
+      }
+
+      .chip .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--good);
+        box-shadow: 0 0 12px rgba(74, 222, 128, 0.62);
+      }
+
+      .chip.warn .dot {
+        background: var(--warn);
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.62);
+      }
+
+      .chip.bad .dot {
+        background: var(--danger);
+        box-shadow: 0 0 12px rgba(251, 113, 133, 0.62);
+      }
+
+      .role-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 42px;
+        padding: 0 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .role-button::after {
+        content: "Switch";
+        color: rgba(255, 255, 255, 0.62);
+      }
+
+      .view {
+        position: absolute;
+        inset: 0;
+      }
+
+      .robot-view {
+        z-index: 10;
+      }
+
+      .robot-overlay-card {
+        position: absolute;
+        left: var(--safe-left);
+        top: calc(var(--safe-top) + 102px);
+        z-index: 20;
+        width: min(332px, calc(100vw - 32px));
+        padding: 16px 18px;
+        border-radius: 24px;
+      }
+
+      .overlay-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .overlay-title {
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+      }
+
+      .overlay-copy {
+        margin-top: 8px;
+        font-size: 14px;
+        line-height: 1.55;
+        color: rgba(248, 250, 252, 0.82);
+      }
+
+      .robot-assist {
+        position: absolute;
+        left: 50%;
+        top: calc(var(--safe-top) + 126px);
+        z-index: 22;
+        transform: translateX(-50%);
+        padding: 12px 16px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: rgba(248, 250, 252, 0.9);
+      }
+
+      .tracking-box {
+        position: absolute;
+        left: 58%;
+        top: 45%;
+        z-index: 18;
+        width: 160px;
+        height: 160px;
+        transform: translate(-50%, -50%);
+        border-radius: 28px;
+        border: 2px solid rgba(56, 189, 248, 0.88);
+        background: rgba(56, 189, 248, 0.08);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+          0 0 40px rgba(56, 189, 248, 0.18);
+        pointer-events: none;
+      }
+
+      .tracking-box::before,
+      .tracking-box::after {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        border: 1px dashed rgba(186, 230, 253, 0.32);
+        border-radius: 18px;
+      }
+
+      .tracking-box::after {
+        inset: auto auto 12px 12px;
+        width: 54px;
+        height: 28px;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.18);
+      }
+
+      .tracking-label {
+        position: absolute;
+        left: 50%;
+        top: -18px;
+        transform: translateX(-50%);
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(9, 19, 31, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .advanced-panel {
+        position: absolute;
+        left: 50%;
+        bottom: calc(var(--safe-bottom) + 188px);
+        z-index: 24;
+        transform: translateX(-50%);
+        width: min(540px, calc(100vw - 32px));
+        padding: 14px;
+        border-radius: 24px;
+      }
+
+      .advanced-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .advanced-head strong {
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+      }
+
+      .advanced-head span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .mode-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .mode-card {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.05);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .mode-card[data-active="true"] {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.18);
+      }
+
+      .mode-card strong {
+        display: block;
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .mode-card span {
+        display: block;
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .action-zone {
+        position: absolute;
+        left: 50%;
+        bottom: var(--safe-bottom);
+        z-index: 26;
+        transform: translateX(-50%);
+        width: min(760px, calc(100vw - 32px));
+        padding: 16px;
+        border-radius: 30px;
+      }
+
+      .action-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .meta-box {
+        padding: 12px 14px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .meta-box span {
+        display: block;
+      }
+
+      .meta-box .meta-label {
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .meta-box .meta-value {
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.35;
+      }
+
+      .primary-button {
+        width: 100%;
+        min-height: 68px;
+        border: 0;
+        border-radius: 22px;
+        background: linear-gradient(180deg, #4ade80, #16a34a);
+        color: #051109;
+        font-size: 19px;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .primary-button.warn {
+        background: linear-gradient(180deg, #fbbf24, #d97706);
+        color: #1f1402;
+      }
+
+      .primary-button.danger {
+        background: linear-gradient(180deg, #fb7185, #e11d48);
+        color: white;
+      }
+
+      .primary-button.disabled {
+        background: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.4);
+        cursor: default;
+      }
+
+      .secondary-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .secondary-button {
+        flex: 1;
+        min-height: 48px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.06);
+        color: white;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .controller-view {
+        z-index: 12;
+      }
+
+      .controller-switch {
+        position: absolute;
+        left: 50%;
+        top: calc(var(--safe-top) + 102px);
+        z-index: 22;
+        transform: translateX(-50%);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px;
+        border-radius: 999px;
+      }
+
+      .controller-switch button {
+        min-width: 148px;
+        min-height: 48px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: rgba(248, 250, 252, 0.62);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .controller-switch button.active {
+        background: rgba(255, 255, 255, 0.12);
+        color: white;
+      }
+
+      .controller-left-surface {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 56%;
+        z-index: 14;
+      }
+
+      .controller-left-surface.locked {
+        pointer-events: none;
+      }
+
+      .surface-tag {
+        position: absolute;
+        left: var(--safe-left);
+        bottom: calc(var(--safe-bottom) + 102px);
+        z-index: 20;
+        padding: 12px 14px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: rgba(248, 250, 252, 0.82);
+      }
+
+      .joystick {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 188px;
+        height: 188px;
+        margin-left: -94px;
+        margin-top: -94px;
+        display: none;
+        pointer-events: none;
+        z-index: 18;
+      }
+
+      .joystick.active {
+        display: block;
+      }
+
+      .joystick-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background:
+          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05) 50%, rgba(9, 19, 31, 0.22) 100%);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          0 20px 44px rgba(2, 6, 23, 0.28);
+      }
+
+      .joystick-ring::before,
+      .joystick-ring::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        transform: translate(-50%, -50%);
+      }
+
+      .joystick-ring::before {
+        width: 1px;
+        height: 124px;
+      }
+
+      .joystick-ring::after {
+        width: 124px;
+        height: 1px;
+      }
+
+      .joystick-knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 74px;
+        height: 74px;
+        margin-left: -37px;
+        margin-top: -37px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background:
+          radial-gradient(circle at 36% 28%, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.42) 42%, rgba(100, 116, 139, 0.2) 100%);
+        box-shadow: 0 16px 30px rgba(15, 23, 42, 0.28);
+      }
+
+      .controller-track {
+        position: absolute;
+        left: 62%;
+        top: 46%;
+        z-index: 18;
+        width: 182px;
+        height: 182px;
+        transform: translate(-50%, -50%);
+        border-radius: 28px;
+        border: 2px solid rgba(132, 204, 22, 0.86);
+        background: rgba(132, 204, 22, 0.08);
+        box-shadow: 0 0 36px rgba(132, 204, 22, 0.18);
+        pointer-events: none;
+      }
+
+      .controller-track::before {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        border-radius: 18px;
+        border: 1px dashed rgba(217, 249, 157, 0.3);
+      }
+
+      .controller-track-label {
+        position: absolute;
+        left: 50%;
+        top: -16px;
+        transform: translateX(-50%);
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(26, 46, 11, 0.86);
+        border: 1px solid rgba(163, 230, 53, 0.24);
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .controller-buttons {
+        position: absolute;
+        right: var(--safe-right);
+        bottom: calc(var(--safe-bottom) + 76px);
+        z-index: 24;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: min(206px, 26vw);
+      }
+
+      .drive-button {
+        min-height: 90px;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: white;
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .drive-button span {
+        display: block;
+        margin-top: 8px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: none;
+        color: rgba(248, 250, 252, 0.7);
+      }
+
+      .drive-button.gas.active {
+        background: linear-gradient(180deg, rgba(34, 197, 94, 0.92), rgba(22, 163, 74, 0.98));
+        color: #04260f;
+      }
+
+      .drive-button.gas.active span {
+        color: rgba(4, 38, 15, 0.82);
+      }
+
+      .drive-button.brake {
+        min-height: 112px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(226, 232, 240, 0.92));
+        color: #0f172a;
+      }
+
+      .drive-button.brake span {
+        color: rgba(15, 23, 42, 0.72);
+      }
+
+      .drive-button.brake.active {
+        background: linear-gradient(180deg, rgba(251, 113, 133, 0.96), rgba(225, 29, 72, 0.98));
+        color: white;
+      }
+
+      .drive-button.brake.active span {
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      .controller-dock {
+        position: absolute;
+        left: 50%;
+        bottom: var(--safe-bottom);
+        z-index: 24;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: min(480px, calc(100vw - 32px));
+        padding: 14px 18px;
+        border-radius: 999px;
+      }
+
+      .dock-block {
+        min-width: 0;
+      }
+
+      .dock-label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .dock-value {
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+
+      .dock-divider {
+        width: 1px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(2, 6, 23, 0.5);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+
+      .dialog {
+        width: min(420px, calc(100vw - 48px));
+        padding: 18px;
+        border-radius: 24px;
+      }
+
+      .dialog h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .dialog p {
+        margin: 10px 0 0;
+        font-size: 14px;
+        line-height: 1.55;
+        color: rgba(248, 250, 252, 0.8);
+      }
+
+      .dialog-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .dialog-actions button {
+        flex: 1;
+        min-height: 46px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .dialog-actions .confirm {
+        background: linear-gradient(180deg, #fb7185, #e11d48);
+      }
+
+      @keyframes road-drift {
+        from {
+          transform: translateY(24px) scaleY(0.92);
+        }
+        to {
+          transform: translateY(-20px) scaleY(1.04);
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .role-topbar {
+          flex-wrap: wrap;
+          padding-right: 16px;
+        }
+
+        .role-topbar-chips {
+          justify-content: flex-start;
+        }
+
+        .controller-buttons {
+          width: min(184px, 28vw);
+        }
+      }
+
+      @media (max-width: 820px) {
+        .robot-overlay-card {
+          width: min(320px, calc(100vw - 32px));
+        }
+
+        .role-topbar {
+          padding-right: 16px;
+        }
+
+        .advanced-panel,
+        .action-zone,
+        .controller-dock {
+          width: calc(100vw - 24px);
+        }
+
+        .controller-switch button {
+          min-width: 118px;
+        }
+
+        .action-meta {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <div id="cameraFeed" class="camera-feed">
+        <div class="road-guides" aria-hidden="true">
+          <span class="lane-a"></span>
+          <span class="lane-b"></span>
+          <span class="lane-c"></span>
+        </div>
+      </div>
+
+      <div class="floating-role">
+        <button id="roleButton" class="role-button">Robot</button>
+      </div>
+
+      <section id="robotView" class="view robot-view">
+        <section class="role-topbar glass">
+          <div class="role-topbar-head">
+            <span class="eyebrow">Merged Role</span>
+            <span class="role-topbar-title">Robot</span>
+            <span class="role-topbar-sub">Drive first runtime with staged Auto and Track entry.</span>
+          </div>
+          <div class="role-topbar-chips">
+            <button id="robotBridgeChip" class="chip chip-interactive"></button>
+            <button id="robotOwnerChip" class="chip chip-interactive"></button>
+            <div id="robotTelemetryChip" class="chip"></div>
+            <div id="robotModeChip" class="chip"></div>
+          </div>
+        </section>
+
+        <section id="robotOverlayCard" class="robot-overlay-card glass">
+          <span id="robotOverlayLabel" class="overlay-label">Drive</span>
+          <div id="robotOverlayTitle" class="overlay-title">Ready to drive</div>
+          <div id="robotOverlayCopy" class="overlay-copy">
+            Drive stays primary and advanced modes remain secondary until they are explicitly opened.
+          </div>
+        </section>
+
+        <div id="robotAssist" class="robot-assist glass hidden">Tap the camera surface to select a target.</div>
+
+        <div id="robotTrackBox" class="tracking-box hidden">
+          <div id="robotTrackLabel" class="tracking-label">Target Ready</div>
+        </div>
+
+        <section id="advancedPanel" class="advanced-panel glass hidden">
+          <div class="advanced-head">
+            <strong>Advanced Modes</strong>
+            <span>Drive remains the default lane.</span>
+          </div>
+          <div class="mode-options">
+            <button id="robotAutoMode" class="mode-card" data-active="false" type="button">
+              <strong>Auto</strong>
+              <span>Requires a model, then exposes one clear next step.</span>
+            </button>
+            <button id="robotTrackMode" class="mode-card" data-active="false" type="button">
+              <strong>Track</strong>
+              <span>Requires a model and explicit target selection on the camera feed.</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="action-zone glass-strong">
+          <div class="action-meta">
+            <div class="meta-box">
+              <span class="meta-label">Current State</span>
+              <span id="robotStateValue" class="meta-value">Drive standby</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Next Step</span>
+              <span id="robotReadinessValue" class="meta-value">Start</span>
+            </div>
+          </div>
+
+          <button id="robotPrimaryButton" class="primary-button" type="button">Start</button>
+
+          <div class="secondary-row">
+            <button id="robotAdvancedButton" class="secondary-button" type="button">Advanced Modes</button>
+            <button id="robotResetButton" class="secondary-button" type="button">Reset Demo</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="controllerView" class="view controller-view hidden">
+        <section class="role-topbar glass">
+          <div class="role-topbar-head">
+            <span class="eyebrow">Merged Role</span>
+            <span class="role-topbar-title">Controller</span>
+            <span class="role-topbar-sub">Current preset stays Mobile Gamer. More controller modes can layer on later.</span>
+          </div>
+          <div class="role-topbar-chips">
+            <button id="controllerBridgeChip" class="chip chip-interactive"></button>
+            <div id="controllerLatencyChip" class="chip"></div>
+            <div id="controllerBatteryChip" class="chip"></div>
+            <div id="controllerLayoutChip" class="chip"></div>
+          </div>
+        </section>
+
+        <div id="controllerSwitch" class="controller-switch glass">
+          <button id="manualButton" class="active" type="button">Manual</button>
+          <button id="autoButton" type="button">Auto Tracking</button>
+        </div>
+
+        <div id="controllerTrack" class="controller-track hidden">
+          <div id="controllerTrackLabel" class="controller-track-label">Path Lock</div>
+        </div>
+
+        <div id="leftSurface" class="controller-left-surface"></div>
+
+        <div id="surfaceTag" class="surface-tag glass">Dynamic steering zone</div>
+
+        <div id="joystick" class="joystick" aria-hidden="true">
+          <div class="joystick-ring"></div>
+          <div id="joystickKnob" class="joystick-knob"></div>
+        </div>
+
+        <section class="controller-buttons">
+          <button id="gasButton" class="drive-button gas glass" type="button">
+            Gas
+            <span>Hold to accelerate</span>
+          </button>
+          <button id="brakeButton" class="drive-button brake" type="button">
+            Brake
+            <span>Always available active stop</span>
+          </button>
+        </section>
+
+        <section class="controller-dock glass">
+          <div class="dock-block">
+            <span class="dock-label">State</span>
+            <div id="controllerStateValue" class="dock-value">Manual control ready</div>
+          </div>
+          <div class="dock-divider"></div>
+          <div class="dock-block">
+            <span class="dock-label">Steer</span>
+            <div id="controllerSteerValue" class="dock-value">0.00</div>
+          </div>
+        </section>
+      </section>
+
+      <section id="roleSheet" class="backdrop hidden">
+        <div class="dialog glass-strong">
+          <h2>Switch Role</h2>
+          <p>This prototype follows the merged app direction: no landing page, Robot by default, Controller as a deliberate role switch.</p>
+          <div class="dialog-actions">
+            <button id="pickRobot" type="button">Robot</button>
+            <button id="pickController" type="button">Controller</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="guardSheet" class="backdrop hidden">
+        <div class="dialog glass-strong">
+          <h2>Stop Current Run</h2>
+          <p>Robot is active. Stop the current run before switching to Controller.</p>
+          <div class="dialog-actions">
+            <button id="guardCancel" type="button">Cancel</button>
+            <button id="guardConfirm" class="confirm" type="button">Stop And Switch</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        role: 'robot',
+        pendingRole: null,
+        robot: {
+          systemState: 'ready',
+          mode: 'drive',
+          runState: 'idle',
+          controlOwner: 'localGamepad',
+          bridgeConnected: true,
+          advancedOpen: false,
+          autoModelReady: false,
+          trackModelReady: false,
+          trackTargetSelected: false,
+          targeting: false,
+          target: { x: 58, y: 45 },
+          battery: 84,
+          latency: 31,
+        },
+        controller: {
+          layout: 'mobileGamer',
+          autoMode: false,
+          joystickPointerId: null,
+          steerX: 0,
+          steerY: 0,
+          gasPointers: new Set(),
+          brakePointers: new Set(),
+          linkConnected: true,
+          battery: 84,
+          latency: 44,
+          target: {
+            x: 62,
+            y: 45,
+            label: 'Path Lock',
+            confidence: 86,
+          },
+        },
+      };
+
+      const elements = {
+        roleButton: document.getElementById('roleButton'),
+        robotView: document.getElementById('robotView'),
+        controllerView: document.getElementById('controllerView'),
+        roleSheet: document.getElementById('roleSheet'),
+        guardSheet: document.getElementById('guardSheet'),
+        pickRobot: document.getElementById('pickRobot'),
+        pickController: document.getElementById('pickController'),
+        guardCancel: document.getElementById('guardCancel'),
+        guardConfirm: document.getElementById('guardConfirm'),
+        robotOverlayLabel: document.getElementById('robotOverlayLabel'),
+        robotOverlayTitle: document.getElementById('robotOverlayTitle'),
+        robotOverlayCopy: document.getElementById('robotOverlayCopy'),
+        robotAssist: document.getElementById('robotAssist'),
+        robotTrackBox: document.getElementById('robotTrackBox'),
+        robotTrackLabel: document.getElementById('robotTrackLabel'),
+        advancedPanel: document.getElementById('advancedPanel'),
+        robotBridgeChip: document.getElementById('robotBridgeChip'),
+        robotOwnerChip: document.getElementById('robotOwnerChip'),
+        robotTelemetryChip: document.getElementById('robotTelemetryChip'),
+        robotModeChip: document.getElementById('robotModeChip'),
+        robotAutoMode: document.getElementById('robotAutoMode'),
+        robotTrackMode: document.getElementById('robotTrackMode'),
+        robotStateValue: document.getElementById('robotStateValue'),
+        robotReadinessValue: document.getElementById('robotReadinessValue'),
+        robotPrimaryButton: document.getElementById('robotPrimaryButton'),
+        robotAdvancedButton: document.getElementById('robotAdvancedButton'),
+        robotResetButton: document.getElementById('robotResetButton'),
+        controllerSwitch: document.getElementById('controllerSwitch'),
+        manualButton: document.getElementById('manualButton'),
+        autoButton: document.getElementById('autoButton'),
+        controllerBridgeChip: document.getElementById('controllerBridgeChip'),
+        controllerLatencyChip: document.getElementById('controllerLatencyChip'),
+        controllerBatteryChip: document.getElementById('controllerBatteryChip'),
+        controllerLayoutChip: document.getElementById('controllerLayoutChip'),
+        controllerTrack: document.getElementById('controllerTrack'),
+        controllerTrackLabel: document.getElementById('controllerTrackLabel'),
+        leftSurface: document.getElementById('leftSurface'),
+        surfaceTag: document.getElementById('surfaceTag'),
+        joystick: document.getElementById('joystick'),
+        joystickKnob: document.getElementById('joystickKnob'),
+        gasButton: document.getElementById('gasButton'),
+        brakeButton: document.getElementById('brakeButton'),
+        controllerStateValue: document.getElementById('controllerStateValue'),
+        controllerSteerValue: document.getElementById('controllerSteerValue'),
+        cameraFeed: document.getElementById('cameraFeed'),
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function robotModeLabel(mode) {
+        return {
+          drive: 'Drive',
+          auto: 'Auto',
+          track: 'Track',
+        }[mode];
+      }
+
+      function robotOwnerLabel(owner) {
+        return {
+          localGamepad: 'Gamepad',
+          remotePhone: 'Remote Phone',
+          pc: 'PC',
+          none: 'None',
+        }[owner];
+      }
+
+      function robotModeReadiness() {
+        const robot = state.robot;
+        if (robot.mode === 'drive') return 'ready';
+        if (robot.mode === 'auto') {
+          return robot.autoModelReady ? 'ready' : 'modelMissing';
+        }
+        if (!robot.trackModelReady) return 'modelMissing';
+        if (!robot.trackTargetSelected) return 'targetMissing';
+        return 'ready';
+      }
+
+      function robotPrimaryState() {
+        const robot = state.robot;
+        const readiness = robotModeReadiness();
+
+        if (robot.systemState === 'booting') {
+          return { label: 'Starting...', tone: 'disabled', enabled: false };
+        }
+        if (robot.systemState === 'fault') {
+          return { label: 'Recover', tone: 'danger', enabled: true };
+        }
+        if (robot.systemState === 'setupNeeded') {
+          return { label: 'Connect Robot', tone: 'warn', enabled: true };
+        }
+        if (robot.mode === 'drive') {
+          return robot.runState === 'active'
+            ? { label: 'Stop', tone: 'danger', enabled: true }
+            : { label: 'Start', tone: 'good', enabled: true };
+        }
+        if (robot.mode === 'auto') {
+          if (readiness === 'modelMissing') {
+            return { label: 'Load Model', tone: 'warn', enabled: true };
+          }
+          return robot.runState === 'active'
+            ? { label: 'Stop Auto', tone: 'danger', enabled: true }
+            : { label: 'Start Auto', tone: 'good', enabled: true };
+        }
+        if (readiness === 'modelMissing') {
+          return { label: 'Load Model', tone: 'warn', enabled: true };
+        }
+        if (readiness === 'targetMissing') {
+          return { label: 'Select Target', tone: 'warn', enabled: true };
+        }
+        return robot.runState === 'active'
+          ? { label: 'Stop Tracking', tone: 'danger', enabled: true }
+          : { label: 'Start Tracking', tone: 'good', enabled: true };
+      }
+
+      function robotOverlayCopy() {
+        const robot = state.robot;
+        const readiness = robotModeReadiness();
+
+        if (robot.systemState === 'booting') {
+          return {
+            label: 'System',
+            title: 'Starting runtime',
+            copy: 'Core services are still booting. Interaction stays constrained until the robot is healthy.',
+          };
+        }
+        if (robot.systemState === 'setupNeeded') {
+          return {
+            label: 'Setup Needed',
+            title: 'Bridge is missing',
+            copy: 'The app opens in Robot mode, but normal runtime stays blocked until the robot bridge is connected.',
+          };
+        }
+        if (robot.systemState === 'fault') {
+          return {
+            label: 'Fault',
+            title: 'Run was interrupted',
+            copy: 'Safety overrides the normal mode UI. Recover first, then return to a clean idle state.',
+          };
+        }
+        if (robot.mode === 'drive') {
+          return robot.runState === 'active'
+            ? {
+                label: 'Drive',
+                title: 'Drive active',
+                copy: 'While driving, role switching and advanced mode changes stay blocked behind Stop.',
+              }
+            : {
+                label: 'Drive',
+                title: 'Ready to drive',
+                copy: 'Drive stays primary. Auto and Track are reachable, but they do not dominate the base runtime.',
+              };
+        }
+        if (robot.mode === 'auto') {
+          if (readiness === 'modelMissing') {
+            return {
+              label: 'Auto',
+              title: 'Model required',
+              copy: 'Auto becomes runnable only after a model is loaded. The shell surfaces one next step instead of generic settings.',
+            };
+          }
+          return robot.runState === 'active'
+            ? {
+                label: 'Auto',
+                title: 'Auto is running',
+                copy: 'AI control is active, but the shell still exposes one dominant Stop action and keeps the mode explicit.',
+              }
+            : {
+                label: 'Auto',
+                title: 'Ready to start',
+                copy: 'Model readiness is satisfied, so the primary action can move directly to Start Auto.',
+              };
+        }
+        if (readiness === 'modelMissing') {
+          return {
+            label: 'Track',
+            title: 'Tracking needs a model',
+            copy: 'Track uses the same staged flow as Auto, but adds explicit target selection on the camera surface.',
+          };
+        }
+        if (readiness === 'targetMissing') {
+          return {
+            label: 'Track',
+            title: 'Target not selected',
+            copy: 'Use the primary action to enter target-selection mode, then tap the feed to define what to follow.',
+          };
+        }
+        return robot.runState === 'active'
+          ? {
+              label: 'Track',
+              title: 'Tracking active',
+              copy: 'The target stays visible on the feed so users can confirm what the AI currently owns.',
+            }
+          : {
+              label: 'Track',
+              title: 'Target ready',
+              copy: 'The camera surface has a target, so the next step can move directly to Start Tracking.',
+            };
+      }
+
+      function renderRobotView() {
+        const robot = state.robot;
+        const readiness = robotModeReadiness();
+        const primary = robotPrimaryState();
+        const overlay = robotOverlayCopy();
+
+        elements.robotOverlayLabel.textContent = overlay.label;
+        elements.robotOverlayTitle.textContent = overlay.title;
+        elements.robotOverlayCopy.textContent = overlay.copy;
+        elements.robotBridgeChip.className = `chip chip-interactive ${robot.bridgeConnected ? 'good' : robot.systemState === 'fault' ? 'bad' : 'warn'}`;
+        elements.robotBridgeChip.innerHTML = `<span class="dot"></span><span>${robot.bridgeConnected ? 'Bridge Ready' : robot.systemState === 'fault' ? 'Fault' : 'Setup Needed'}</span>`;
+        elements.robotOwnerChip.className = 'chip chip-interactive';
+        elements.robotOwnerChip.innerHTML = `<span>Owner: ${robotOwnerLabel(robot.controlOwner)}</span>`;
+        elements.robotTelemetryChip.textContent = `${robot.battery}% | ${robot.latency} ms`;
+        elements.robotModeChip.textContent = robotModeLabel(robot.mode);
+
+        elements.robotStateValue.textContent = {
+          drive: robot.runState === 'active' ? 'Drive active' : 'Drive standby',
+          auto: robot.runState === 'active' ? 'Auto active' : readiness === 'modelMissing' ? 'Auto blocked' : 'Auto standby',
+          track: robot.runState === 'active' ? 'Tracking active' : readiness === 'modelMissing' ? 'Track blocked' : readiness === 'targetMissing' ? 'Awaiting target' : 'Track standby',
+        }[robot.mode];
+        elements.robotReadinessValue.textContent = primary.label;
+
+        elements.robotPrimaryButton.textContent = primary.label;
+        elements.robotPrimaryButton.className = 'primary-button';
+        if (primary.tone === 'warn') elements.robotPrimaryButton.classList.add('warn');
+        if (primary.tone === 'danger') elements.robotPrimaryButton.classList.add('danger');
+        if (primary.tone === 'disabled') elements.robotPrimaryButton.classList.add('disabled');
+
+        elements.robotAdvancedButton.textContent = robot.advancedOpen || robot.mode !== 'drive'
+          ? 'Back To Drive'
+          : 'Advanced Modes';
+
+        const advancedVisible = robot.systemState === 'ready' && (robot.advancedOpen || robot.mode !== 'drive');
+        elements.advancedPanel.classList.toggle('hidden', !advancedVisible);
+        elements.robotAutoMode.dataset.active = String(robot.mode === 'auto');
+        elements.robotTrackMode.dataset.active = String(robot.mode === 'track');
+
+        const showAssist = robot.targeting;
+        elements.robotAssist.classList.toggle('hidden', !showAssist);
+
+        const showTrackBox = robot.mode === 'track' && robot.trackTargetSelected;
+        elements.robotTrackBox.classList.toggle('hidden', !showTrackBox);
+        if (showTrackBox) {
+          elements.robotTrackBox.style.left = `${robot.target.x}%`;
+          elements.robotTrackBox.style.top = `${robot.target.y}%`;
+          elements.robotTrackLabel.textContent = robot.runState === 'active' ? 'Target Locked' : 'Target Ready';
+        }
+      }
+
+      function renderControllerView() {
+        const controller = state.controller;
+        elements.controllerBridgeChip.className = `chip chip-interactive ${controller.linkConnected ? 'good' : 'warn'}`;
+        elements.controllerBridgeChip.innerHTML = `<span class="dot"></span><span>${controller.linkConnected ? 'Robot Link' : 'Link Waiting'}</span>`;
+        elements.controllerLatencyChip.textContent = `${controller.latency} ms`;
+        elements.controllerBatteryChip.textContent = `${controller.battery}% battery`;
+        elements.controllerLayoutChip.textContent = 'Preset: Mobile Gamer';
+
+        elements.manualButton.classList.toggle('active', !controller.autoMode);
+        elements.autoButton.classList.toggle('active', controller.autoMode);
+        elements.leftSurface.classList.toggle('locked', controller.autoMode);
+        elements.controllerTrack.classList.toggle('hidden', !controller.autoMode);
+
+        if (controller.autoMode) {
+          elements.controllerTrack.style.left = `${controller.target.x}%`;
+          elements.controllerTrack.style.top = `${controller.target.y}%`;
+          elements.controllerTrackLabel.textContent = `${controller.target.label} ${Math.round(controller.target.confidence)}%`;
+          elements.surfaceTag.textContent = 'AI owns steering';
+        } else {
+          elements.surfaceTag.textContent = 'Dynamic steering zone';
+        }
+
+        const gasActive = controller.gasPointers.size > 0;
+        const brakeActive = controller.brakePointers.size > 0;
+        elements.gasButton.classList.toggle('active', gasActive);
+        elements.brakeButton.classList.toggle('active', brakeActive);
+
+        let controllerText = controller.linkConnected ? 'Manual control ready' : 'Link waiting';
+        if (controller.autoMode) controllerText = 'Auto tracking visible, tap feed to retarget';
+        if (gasActive) controllerText = controller.autoMode ? 'AI steer plus speed boost' : 'Manual throttle active';
+        if (brakeActive) controllerText = 'Brake override engaged';
+
+        elements.controllerStateValue.textContent = controllerText;
+        elements.controllerSteerValue.textContent = `${Math.abs(controller.steerX) < 0.01 ? 0 : controller.steerX.toFixed(2)}`;
+      }
+
+      function renderRoleButton() {
+        elements.roleButton.textContent = state.role === 'robot' ? 'Robot' : 'Controller';
+      }
+
+      function renderRole() {
+        elements.robotView.classList.toggle('hidden', state.role !== 'robot');
+        elements.controllerView.classList.toggle('hidden', state.role !== 'controller');
+        renderRoleButton();
+        renderRobotView();
+        renderControllerView();
+      }
+
+      function openRoleSheet() {
+        elements.roleSheet.classList.remove('hidden');
+      }
+
+      function closeRoleSheet() {
+        elements.roleSheet.classList.add('hidden');
+      }
+
+      function closeGuardSheet() {
+        elements.guardSheet.classList.add('hidden');
+        state.pendingRole = null;
+      }
+
+      function switchRole(nextRole) {
+        if (nextRole === state.role) {
+          closeRoleSheet();
+          return;
+        }
+
+        if (state.role === 'robot' && state.robot.runState === 'active') {
+          state.pendingRole = nextRole;
+          closeRoleSheet();
+          elements.guardSheet.classList.remove('hidden');
+          return;
+        }
+
+        state.role = nextRole;
+        closeRoleSheet();
+        renderRole();
+      }
+
+      function resetRobotDemo() {
+        state.robot.systemState = 'ready';
+        state.robot.mode = 'drive';
+        state.robot.runState = 'idle';
+        state.robot.controlOwner = 'localGamepad';
+        state.robot.bridgeConnected = true;
+        state.robot.advancedOpen = false;
+        state.robot.autoModelReady = false;
+        state.robot.trackModelReady = false;
+        state.robot.trackTargetSelected = false;
+        state.robot.targeting = false;
+        state.robot.target = { x: 58, y: 45 };
+        renderRole();
+      }
+
+      function cycleRobotOwner() {
+        const order = ['localGamepad', 'remotePhone', 'pc'];
+        const currentIndex = order.indexOf(state.robot.controlOwner);
+        state.robot.controlOwner = order[(currentIndex + 1) % order.length];
+        renderRobotView();
+      }
+
+      function toggleRobotBridge() {
+        const robot = state.robot;
+        if (robot.bridgeConnected) {
+          robot.bridgeConnected = false;
+          robot.systemState = robot.runState === 'active' ? 'fault' : 'setupNeeded';
+          robot.runState = 'idle';
+        } else {
+          robot.bridgeConnected = true;
+          robot.systemState = 'ready';
+        }
+        renderRole();
+      }
+
+      function selectRobotMode(mode) {
+        if (state.robot.systemState !== 'ready' || state.robot.runState === 'active') {
+          return;
+        }
+        state.robot.mode = mode;
+        state.robot.advancedOpen = mode !== 'drive';
+        state.robot.targeting = false;
+        renderRole();
+      }
+
+      function toggleAdvancedPanel() {
+        const robot = state.robot;
+        if (robot.systemState !== 'ready' || robot.runState === 'active') return;
+        if (robot.advancedOpen || robot.mode !== 'drive') {
+          robot.mode = 'drive';
+          robot.advancedOpen = false;
+          robot.targeting = false;
+        } else {
+          robot.advancedOpen = true;
+        }
+        renderRole();
+      }
+
+      function handleRobotPrimaryAction() {
+        const robot = state.robot;
+        const readiness = robotModeReadiness();
+
+        if (robot.systemState === 'fault') {
+          robot.systemState = robot.bridgeConnected ? 'ready' : 'setupNeeded';
+          renderRole();
+          return;
+        }
+        if (robot.systemState === 'setupNeeded') {
+          robot.bridgeConnected = true;
+          robot.systemState = 'ready';
+          renderRole();
+          return;
+        }
+        if (robot.systemState !== 'ready') return;
+
+        if (robot.mode === 'drive') {
+          robot.runState = robot.runState === 'active' ? 'idle' : 'active';
+          renderRole();
+          return;
+        }
+
+        if (robot.mode === 'auto') {
+          if (readiness === 'modelMissing') {
+            robot.autoModelReady = true;
+          } else {
+            robot.runState = robot.runState === 'active' ? 'idle' : 'active';
+          }
+          renderRole();
+          return;
+        }
+
+        if (readiness === 'modelMissing') {
+          robot.trackModelReady = true;
+          renderRole();
+          return;
+        }
+        if (readiness === 'targetMissing') {
+          robot.targeting = true;
+          renderRole();
+          return;
+        }
+        robot.runState = robot.runState === 'active' ? 'idle' : 'active';
+        renderRole();
+      }
+
+      function placeRobotTarget(event) {
+        const robot = state.robot;
+        if (state.role !== 'robot' || robot.mode !== 'track' || !robot.targeting) {
+          return;
+        }
+
+        const rect = elements.cameraFeed.getBoundingClientRect();
+        robot.target.x = clamp(((event.clientX - rect.left) / rect.width) * 100, 18, 82);
+        robot.target.y = clamp(((event.clientY - rect.top) / rect.height) * 100, 24, 72);
+        robot.trackTargetSelected = true;
+        robot.targeting = false;
+        renderRole();
+      }
+
+      function resetJoystick() {
+        state.controller.steerX = 0;
+        state.controller.steerY = 0;
+        state.controller.joystickPointerId = null;
+        elements.joystick.classList.remove('active');
+        elements.joystickKnob.style.transform = 'translate(0px, 0px)';
+        renderControllerView();
+      }
+
+      function setJoystickPosition(x, y) {
+        const rect = elements.leftSurface.getBoundingClientRect();
+        const clampedX = clamp(x, rect.left + 94, rect.right - 94);
+        const clampedY = clamp(y, rect.top + 94, rect.bottom - 94);
+        elements.joystick.style.left = `${clampedX}px`;
+        elements.joystick.style.top = `${clampedY}px`;
+      }
+
+      function updateJoystick(event) {
+        const joystickRect = elements.joystick.getBoundingClientRect();
+        const centerX = joystickRect.left + joystickRect.width / 2;
+        const centerY = joystickRect.top + joystickRect.height / 2;
+        const radius = joystickRect.width * 0.31;
+        const deltaX = event.clientX - centerX;
+        const deltaY = event.clientY - centerY;
+        const distance = Math.hypot(deltaX, deltaY);
+        const limited = Math.min(distance, radius);
+        const angle = Math.atan2(deltaY, deltaX);
+        const knobX = distance === 0 ? 0 : Math.cos(angle) * limited;
+        const knobY = distance === 0 ? 0 : Math.sin(angle) * limited;
+
+        state.controller.steerX = clamp(knobX / radius, -1, 1);
+        state.controller.steerY = clamp(knobY / radius, -1, 1);
+        elements.joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+        renderControllerView();
+      }
+
+      function startJoystick(event) {
+        if (state.role !== 'controller' || state.controller.autoMode) return;
+        if (state.controller.joystickPointerId !== null) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+        event.preventDefault();
+        state.controller.joystickPointerId = event.pointerId;
+        elements.leftSurface.setPointerCapture(event.pointerId);
+        elements.joystick.classList.add('active');
+        setJoystickPosition(event.clientX, event.clientY);
+        elements.joystickKnob.style.transform = 'translate(0px, 0px)';
+        updateJoystick(event);
+      }
+
+      function moveJoystick(event) {
+        if (event.pointerId !== state.controller.joystickPointerId) return;
+        event.preventDefault();
+        updateJoystick(event);
+      }
+
+      function endJoystick(event) {
+        if (event.pointerId !== state.controller.joystickPointerId) return;
+        resetJoystick();
+      }
+
+      function bindControllerButton(button, pointerSet) {
+        function release(event) {
+          if (pointerSet.delete(event.pointerId)) {
+            renderControllerView();
+          }
+        }
+
+        button.addEventListener('pointerdown', (event) => {
+          if (state.role !== 'controller') return;
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          event.preventDefault();
+          pointerSet.add(event.pointerId);
+          button.setPointerCapture(event.pointerId);
+          renderControllerView();
+        });
+
+        button.addEventListener('pointerup', release);
+        button.addEventListener('pointercancel', release);
+        button.addEventListener('lostpointercapture', release);
+      }
+
+      function toggleControllerLink() {
+        state.controller.linkConnected = !state.controller.linkConnected;
+        renderControllerView();
+      }
+
+      function toggleControllerMode(autoMode) {
+        state.controller.autoMode = autoMode;
+        if (autoMode) {
+          resetJoystick();
+        }
+        renderRole();
+      }
+
+      function placeControllerTarget(event) {
+        if (state.role !== 'controller' || !state.controller.autoMode) return;
+        const rect = elements.cameraFeed.getBoundingClientRect();
+        state.controller.target.x = clamp(((event.clientX - rect.left) / rect.width) * 100, 20, 82);
+        state.controller.target.y = clamp(((event.clientY - rect.top) / rect.height) * 100, 24, 72);
+        state.controller.target.label = state.controller.target.x < 46 ? 'Pedestrian' : state.controller.target.x > 68 ? 'Cone' : 'Path Lock';
+        state.controller.target.confidence = clamp(80 + Math.round(Math.random() * 12), 80, 96);
+        renderControllerView();
+      }
+
+      elements.roleButton.addEventListener('click', openRoleSheet);
+      elements.pickRobot.addEventListener('click', () => switchRole('robot'));
+      elements.pickController.addEventListener('click', () => switchRole('controller'));
+      elements.roleSheet.addEventListener('click', (event) => {
+        if (event.target === elements.roleSheet) closeRoleSheet();
+      });
+
+      elements.guardCancel.addEventListener('click', closeGuardSheet);
+      elements.guardConfirm.addEventListener('click', () => {
+        state.robot.runState = 'idle';
+        state.role = state.pendingRole || 'controller';
+        closeGuardSheet();
+        renderRole();
+      });
+      elements.guardSheet.addEventListener('click', (event) => {
+        if (event.target === elements.guardSheet) closeGuardSheet();
+      });
+
+      elements.robotBridgeChip.addEventListener('click', toggleRobotBridge);
+      elements.robotOwnerChip.addEventListener('click', cycleRobotOwner);
+      elements.controllerBridgeChip.addEventListener('click', toggleControllerLink);
+
+      elements.robotAutoMode.addEventListener('click', () => selectRobotMode('auto'));
+      elements.robotTrackMode.addEventListener('click', () => selectRobotMode('track'));
+      elements.robotAdvancedButton.addEventListener('click', toggleAdvancedPanel);
+      elements.robotPrimaryButton.addEventListener('click', handleRobotPrimaryAction);
+      elements.robotResetButton.addEventListener('click', resetRobotDemo);
+
+      elements.manualButton.addEventListener('click', () => toggleControllerMode(false));
+      elements.autoButton.addEventListener('click', () => toggleControllerMode(true));
+
+      elements.leftSurface.addEventListener('pointerdown', startJoystick);
+      elements.leftSurface.addEventListener('pointermove', moveJoystick);
+      elements.leftSurface.addEventListener('pointerup', endJoystick);
+      elements.leftSurface.addEventListener('pointercancel', endJoystick);
+      elements.leftSurface.addEventListener('lostpointercapture', endJoystick);
+
+      bindControllerButton(elements.gasButton, state.controller.gasPointers);
+      bindControllerButton(elements.brakeButton, state.controller.brakePointers);
+
+      elements.cameraFeed.addEventListener('pointerdown', (event) => {
+        placeRobotTarget(event);
+        placeControllerTarget(event);
+      });
+
+      renderRole();
+    </script>
+  </body>
+</html>

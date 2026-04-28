@@ -14,9 +14,13 @@ Active team-project code lives in:
 Archived or non-mainline material:
 
 - `apps/controller_app`
-- `apps/control_app/lib/legacy`
 - `docs/design`
 - `Individual Project`
+
+Special note:
+
+- most of `apps/control_app/lib/legacy` is archival
+- `apps/control_app/lib/legacy/robot_shell` is currently used by `FusionApp` host mode as a temporary active dependency
 
 ## 2. What To Edit
 
@@ -24,13 +28,19 @@ Archived or non-mainline material:
 
 Edit:
 
+- `apps/control_app/lib/app`
 - `apps/control_app/lib/features/control`
 - `apps/control_app/lib/core`
 - `apps/control_app/assets`
 
 Avoid editing:
 
-- `apps/control_app/lib/legacy`
+- unrelated paths under `apps/control_app/lib/legacy`
+
+If your task touches the current host role inside `FusionApp`:
+
+- you may need to read or carefully update `apps/control_app/lib/legacy/robot_shell`
+- prefer extracting reusable logic into active paths or shared packages instead of growing that dependency further
 
 ### If you are working on robot-side UI
 
@@ -39,6 +49,11 @@ Edit:
 - `apps/robot_app/lib/features`
 - `apps/robot_app/lib/core`
 - `apps/robot_app/assets`
+
+Also note:
+
+- `apps/robot_app` remains the standalone robot-side app
+- `control_app` also contains a host-role runtime through `FusionApp`
 
 ### If you are working on hardware or backend integration
 
@@ -135,7 +150,7 @@ Good branch examples:
 
 - `feat/control-layout-polish`
 - `feat/robot-setup-flow`
-- `refactor/control-legacy-archive`
+- `refactor/fusion-host-extraction`
 - `docs/collaboration-guide`
 
 Keep commits scoped.

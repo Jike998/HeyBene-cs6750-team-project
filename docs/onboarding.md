@@ -11,8 +11,9 @@ Start with:
 
 ## 2. Pick A Primary App
 
-- choose `apps/control_app` if you are working on the controller-side UI
-- choose `apps/robot_app` if you are working on the robot-side UI
+- choose `apps/control_app` if you are working on the mainline merged app or controller-side UI
+- choose `apps/robot_app` if you are working on the standalone robot-side app
+- if you touch `FusionApp` host mode, be aware that it currently reuses code from `apps/control_app/lib/legacy/robot_shell`
 
 ## 3. Run The App Locally
 
@@ -37,6 +38,12 @@ flutter run
 - UI polish: `lib/features/*/presentation`, `lib/core/theme`
 - app logic and local state: `lib/features/*/state`, `lib/app`
 - hardware/network adapters: `lib/services`
+
+For `control_app` specifically:
+
+- `lib/app/fusion_app.dart` is the mainline runtime entry
+- `lib/features/control` holds the active controller-side flow
+- `lib/legacy/robot_shell` is a temporary host-role dependency, not the preferred place for new shared logic
 
 ## 5. If You Do Not Have Hardware
 

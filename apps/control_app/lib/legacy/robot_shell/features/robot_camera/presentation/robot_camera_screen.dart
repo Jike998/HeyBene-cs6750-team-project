@@ -16,16 +16,23 @@ class RobotCameraScreen extends StatefulWidget {
   State<RobotCameraScreen> createState() => _RobotCameraScreenState();
 }
 
-class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTickerProviderStateMixin {
+class _RobotCameraScreenState extends State<RobotCameraScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _modeFx;
   RobotMode _transitionMode = RobotMode.drive;
   bool _showModeLabel = false;
+  bool _advancedOpen = false;
   Timer? _hideLabelTimer;
 
   @override
   void initState() {
     super.initState();
-    _modeFx = AnimationController(vsync: this, lowerBound: 0, upperBound: 1, duration: const Duration(milliseconds: 520));
+    _modeFx = AnimationController(
+      vsync: this,
+      lowerBound: 0,
+      upperBound: 1,
+      duration: const Duration(milliseconds: 520),
+    );
   }
 
   @override
@@ -35,13 +42,7 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
     super.dispose();
   }
 
-  void _handleModeDragProgress(double progress) {
-    _hideLabelTimer?.cancel();
-    _showModeLabel = false;
-    _modeFx.value = progress.clamp(0.0, 1.0);
-  }
-
-  void _handleModeCommitted(RobotMode mode) {
+  void _animateModeCommit(RobotMode mode) {
     _transitionMode = mode;
     _showModeLabel = true;
     _modeFx.value = 1;
@@ -56,9 +57,83 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
     setState(() {});
   }
 
-  void _handleModeDragEnd() {
-    if (_showModeLabel) return;
-    _modeFx.animateTo(0, curve: Curves.easeOutCubic);
+  void _selectMode(RobotMode mode, RobotCameraState state) {
+    if (state.isRunning && mode != state.mode) return;
+    if (state.mode != mode) {
+      state.setMode(mode);
+      _animateModeCommit(mode);
+    }
+    setState(() {
+      _advancedOpen = mode != RobotMode.drive;
+    });
+  }
+
+  void _toggleAdvanced(RobotCameraState state) {
+    if (state.isRunning) return;
+    if (_advancedOpen || state.mode != RobotMode.drive) {
+      _selectMode(RobotMode.drive, state);
+      return;
+    }
+    setState(() {
+      _advancedOpen = true;
+    });
+  }
+
+  void _openSettingsSheet(BuildContext context, RobotCameraState state) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _SettingsSheet(state: state),
+    );
+  }
+
+  Future<void> _handlePrimaryAction({
+    required BuildContext context,
+    required RobotConnectionController connectionController,
+    required RobotCameraController cameraController,
+    required RobotCameraState state,
+  }) async {
+    if (!cameraController.initialized) {
+      return;
+    }
+
+    if (!state.connection.usbConnected) {
+      await connectionController.connectUsb();
+      return;
+    }
+
+    switch (state.mode) {
+      case RobotMode.drive:
+        if (state.isRunning) {
+          await cameraController.stopFromUi();
+        } else {
+          await cameraController.startFromUi();
+        }
+        return;
+      case RobotMode.auto:
+        if (state.isRunning) {
+          state.stopRobot();
+        } else {
+          state.startRobot();
+        }
+        return;
+      case RobotMode.track:
+        if (state.trackingPoint == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tap the camera view to select a target first.'),
+            ),
+          );
+          return;
+        }
+        if (state.isRunning) {
+          state.stopRobot();
+        } else {
+          state.startRobot();
+        }
+        return;
+    }
   }
 
   @override
@@ -68,7 +143,7 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
 
     return Consumer<RobotCameraState>(
       builder: (context, state, child) {
-        final connection = connectionController.snapshot;
+        final showAdvanced = _advancedOpen || state.mode != RobotMode.drive;
 
         if (_transitionMode != state.mode && _modeFx.value == 0) {
           _transitionMode = state.mode;
@@ -103,33 +178,51 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
                   child: const SizedBox.expand(),
                 ),
               ),
-              SafeArea(
-                bottom: false,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 4,
-                      left: 0,
-                      right: 0,
-                      child: _TelemetryTray(
-                        state: state,
-                        connection: connection,
-                        initialized: cameraController.initialized,
-                      ),
-                    ),
-                    if (state.mode == RobotMode.track && state.trackingPoint != null)
-                      Positioned.fill(
-                        child: _TrackOverlay(point: state.trackingPoint!, label: state.trackingStatus),
-                      ),
-                  ],
+              if (state.mode == RobotMode.track && state.trackingPoint != null)
+                Positioned.fill(
+                  child: _TrackOverlay(
+                    point: state.trackingPoint!,
+                    label: state.trackingStatus,
+                  ),
                 ),
-              ),
-              _BottomControls(
-                state: state,
-                cameraController: cameraController,
-                onModeDragProgress: _handleModeDragProgress,
-                onModeCommitted: _handleModeCommitted,
-                onModeDragEnd: _handleModeDragEnd,
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _RuntimeTopBar(
+                        state: state,
+                        initialized: cameraController.initialized,
+                        onOpenSettings: () => _openSettingsSheet(context, state),
+                      ),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _RuntimeStatusCard(
+                          state: state,
+                          initialized: cameraController.initialized,
+                          advancedOpen: showAdvanced,
+                        ),
+                      ),
+                      const Spacer(),
+                      _RuntimeBottomPanel(
+                        state: state,
+                        initialized: cameraController.initialized,
+                        advancedOpen: showAdvanced,
+                        onToggleAdvanced: () => _toggleAdvanced(state),
+                        onSelectMode: (mode) => _selectMode(mode, state),
+                        onPrimaryAction: () => _handlePrimaryAction(
+                          context: context,
+                          connectionController: connectionController,
+                          cameraController: cameraController,
+                          state: state,
+                        ),
+                        onOpenSettings: () => _openSettingsSheet(context, state),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -166,9 +259,9 @@ class _FeedOverlay extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color.fromRGBO(6, 10, 18, 0.22),
+            Color.fromRGBO(6, 10, 18, 0.24),
             Color.fromRGBO(9, 14, 24, 0.10),
-            Color.fromRGBO(8, 12, 22, 0.42),
+            Color.fromRGBO(8, 12, 22, 0.56),
           ],
           stops: [0, 0.28, 1],
         ),
@@ -213,7 +306,6 @@ class _ModeTransitionFeedback extends StatelessWidget {
     final t = Curves.easeOutCubic.transform(progress.clamp(0.0, 1.0));
     final blur = lerpDouble(0, 18, t)!;
     final veil = lerpDouble(0, 0.16, t)!;
-
     final labelOpacity = showLabel ? (1 - t).clamp(0.0, 1.0) : 0.0;
 
     return Stack(
@@ -229,11 +321,13 @@ class _ModeTransitionFeedback extends StatelessWidget {
             child: Opacity(
               opacity: labelOpacity,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color.fromRGBO(16, 20, 30, 0.42),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.10)),
                 ),
                 child: Text(
                   label,
@@ -252,253 +346,342 @@ class _ModeTransitionFeedback extends StatelessWidget {
   }
 }
 
-class _TelemetryTray extends StatefulWidget {
-  const _TelemetryTray({
+class _RuntimeTopBar extends StatelessWidget {
+  const _RuntimeTopBar({
     required this.state,
-    required this.connection,
     required this.initialized,
+    required this.onOpenSettings,
   });
 
   final RobotCameraState state;
-  final dynamic connection;
   final bool initialized;
-
-  @override
-  State<_TelemetryTray> createState() => _TelemetryTrayState();
-}
-
-class _TelemetryTrayState extends State<_TelemetryTray> {
-  static const _collapsedHeight = 44.0;
-  static const _expandedHeight = 132.0;
-
-  double _progress = 0;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
-    final telemetry = widget.state.telemetry;
-    final height = lerpDouble(_collapsedHeight, _expandedHeight, _progress)!;
+    final bridgeHealthy = initialized && state.connection.usbConnected;
+    final bridgeLabel = !initialized
+        ? 'Starting'
+        : bridgeHealthy
+            ? 'Bridge Ready'
+            : 'Bridge Missing';
+    final ownerLabel = _ownerLabel(state);
+    final remoteLink = state.connection.bluetoothConnected ? 'Remote Linked' : 'Remote Idle';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) {
-          setState(() {
-            _progress = (_progress + details.delta.dy / (_expandedHeight - _collapsedHeight)).clamp(0.0, 1.0);
-          });
-        },
-        onVerticalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          final shouldExpand = velocity > 140 || (velocity >= -140 && _progress > 0.45);
-          setState(() {
-            _progress = shouldExpand ? 1 : 0;
-          });
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              height: height,
-              decoration: BoxDecoration(
-                color: const Color.fromRGBO(14, 16, 22, 0.88),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-                boxShadow: const [
-                  BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.24), blurRadius: 24, offset: Offset(0, 12)),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-                    child: Row(
-                      children: [
-                        _ConnectionGlyph(icon: Icons.bluetooth_rounded, connected: widget.connection.bluetoothConnected),
-                        const SizedBox(width: 8),
-                        _ConnectionGlyph(icon: Icons.usb_rounded, connected: widget.connection.usbConnected),
-                        const SizedBox(width: 10),
-                        _BatteryMini(value: telemetry.battery),
-                        const Spacer(),
-                        Transform.rotate(
-                          angle: lerpDouble(0, 3.14159, _progress)!,
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 22,
-                            color: Colors.white.withValues(alpha: 0.74),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ClipRect(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        heightFactor: _progress,
-                        child: Opacity(
-                          opacity: Curves.easeOut.transform(_progress),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    _TrayMetric(icon: Icons.schedule_rounded, label: 'LATENCY', value: '${telemetry.latency}ms'),
-                                    _divider(),
-                                    _TrayMetric(icon: Icons.speed_rounded, label: 'SPEED', value: telemetry.speed.toStringAsFixed(2)),
-                                    _divider(),
-                                    _TrayMetric(icon: Icons.motion_photos_on_rounded, label: 'STEER', value: telemetry.steering.toStringAsFixed(2)),
-                                    _divider(),
-                                    _TrayMetric(icon: Icons.gps_fixed_rounded, label: 'CONFIDENCE', value: '${telemetry.confidence}%'),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'GAMEPAD: ${widget.state.gamepadConnected ? "ON" : "OFF"}  ARMED: ${widget.state.driveArmed ? "YES" : "NO"}\n${widget.state.gamepadDebug}',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _divider() {
-    return Container(
-      width: 1,
-      height: 28,
-      margin: const EdgeInsets.symmetric(horizontal: 10),
-      color: Colors.white.withValues(alpha: 0.10),
-    );
-  }
-}
-
-class _ConnectionGlyph extends StatelessWidget {
-  const _ConnectionGlyph({required this.icon, required this.connected});
-
-  final IconData icon;
-  final bool connected;
-
-  @override
-  Widget build(BuildContext context) {
-    const on = Color(0xFF3DDC84);
-    final off = Colors.white.withValues(alpha: 0.42);
-
-    return SizedBox(
-      width: 22,
-      height: 18,
-      child: Stack(
-        alignment: Alignment.center,
+    return _GlassPanel(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
         children: [
-          Icon(icon, size: 18, color: connected ? on : off),
-          if (!connected)
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _SlashPainter(color: off.withValues(alpha: 0.92), strokeWidth: 2),
+          Row(
+            children: [
+              const _StatusPill(
+                label: 'Robot',
+                tone: _PillTone.neutral,
               ),
-            ),
+              const SizedBox(width: 8),
+              _StatusPill(
+                label: bridgeLabel,
+                tone: bridgeHealthy ? _PillTone.good : _PillTone.bad,
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: onOpenSettings,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.tune_rounded, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _StatusPill(
+                label: 'Owner: $ownerLabel',
+                tone: _PillTone.neutral,
+              ),
+              _StatusPill(
+                label: remoteLink,
+                tone: state.connection.bluetoothConnected
+                    ? _PillTone.good
+                    : _PillTone.neutral,
+              ),
+              _StatusPill(
+                label: '${state.telemetry.battery}% / ${state.telemetry.latency}ms',
+                tone: _PillTone.neutral,
+              ),
+              _StatusPill(
+                label: _modeLabel(state.mode),
+                tone: _PillTone.accent,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _SlashPainter extends CustomPainter {
-  const _SlashPainter({required this.color, required this.strokeWidth});
+class _RuntimeStatusCard extends StatelessWidget {
+  const _RuntimeStatusCard({
+    required this.state,
+    required this.initialized,
+    required this.advancedOpen,
+  });
 
-  final Color color;
-  final double strokeWidth;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawLine(Offset(size.width * 0.18, size.height * 0.92), Offset(size.width * 0.82, size.height * 0.10), p);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SlashPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
-  }
-}
-
-class _BatteryMini extends StatelessWidget {
-  const _BatteryMini({required this.value});
-
-  final int value;
+  final RobotCameraState state;
+  final bool initialized;
+  final bool advancedOpen;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final headline = _headline(state, initialized);
+    final body = _body(state, initialized, advancedOpen);
+
+    return _GlassPanel(
+      width: 258,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            headline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.82),
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuntimeBottomPanel extends StatelessWidget {
+  const _RuntimeBottomPanel({
+    required this.state,
+    required this.initialized,
+    required this.advancedOpen,
+    required this.onToggleAdvanced,
+    required this.onSelectMode,
+    required this.onPrimaryAction,
+    required this.onOpenSettings,
+  });
+
+  final RobotCameraState state;
+  final bool initialized;
+  final bool advancedOpen;
+  final VoidCallback onToggleAdvanced;
+  final ValueChanged<RobotMode> onSelectMode;
+  final Future<void> Function() onPrimaryAction;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryAction = _primaryActionFor(state, initialized);
+
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.battery_5_bar_rounded, size: 16, color: Colors.white.withValues(alpha: 0.76)),
-        const SizedBox(width: 4),
-        Text('$value%', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        if (advancedOpen) ...[
+          _AdvancedModePanel(
+            state: state,
+            onSelectMode: onSelectMode,
+          ),
+          const SizedBox(height: 12),
+        ],
+        _GlassPanel(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetaBox(
+                      label: 'Current Mode',
+                      value: _modeLabel(state.mode),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MetaBox(
+                      label: 'Next Step',
+                      value: _nextStepLabel(state, initialized),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: primaryAction.enabled ? onPrimaryAction : null,
+                  icon: Icon(primaryAction.icon),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryAction.background,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        Colors.white.withValues(alpha: 0.10),
+                    disabledForegroundColor:
+                        Colors.white.withValues(alpha: 0.44),
+                    minimumSize: const Size.fromHeight(64),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  label: Text(primaryAction.label),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: state.isRunning ? null : onToggleAdvanced,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                        minimumSize: const Size.fromHeight(46),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: Icon(
+                        advancedOpen
+                            ? Icons.arrow_back_rounded
+                            : Icons.widgets_outlined,
+                      ),
+                      label: Text(
+                        advancedOpen ? 'Back To Drive' : 'Advanced Modes',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 52,
+                    height: 46,
+                    child: OutlinedButton(
+                      onPressed: onOpenSettings,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                      child: const Icon(Icons.settings_rounded, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _footerNote(state, advancedOpen),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.62),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
-class _TrayMetric extends StatelessWidget {
-  const _TrayMetric({required this.icon, required this.label, required this.value});
+class _AdvancedModePanel extends StatelessWidget {
+  const _AdvancedModePanel({
+    required this.state,
+    required this.onSelectMode,
+  });
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final RobotCameraState state;
+  final ValueChanged<RobotMode> onSelectMode;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return _GlassPanel(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'Advanced Modes',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            state.isRunning
+                ? 'Stop the current run before changing advanced modes.'
+                : 'Auto and Track stay secondary until you explicitly choose them.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
-              Icon(icon, size: 16, color: Colors.white.withValues(alpha: 0.44)),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.42),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                  ),
+              Expanded(
+                child: _ModeCard(
+                  title: 'Auto',
+                  subtitle:
+                      '${_autoModelLabel(state.autoModel)} · ${_computeDeviceLabel(state.autoDevice)}',
+                  status: state.isRunning && state.mode == RobotMode.auto
+                      ? 'Active'
+                      : 'Model ready',
+                  selected: state.mode == RobotMode.auto,
+                  enabled: !state.isRunning || state.mode == RobotMode.auto,
+                  onTap: () => onSelectMode(RobotMode.auto),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ModeCard(
+                  title: 'Track',
+                  subtitle:
+                      '${_trackModelLabel(state.trackModel)} · ${_targetTypeLabel(state.trackTargetType)}',
+                  status: state.trackingPoint == null
+                      ? 'Need target'
+                      : state.isRunning && state.mode == RobotMode.track
+                          ? 'Active'
+                          : 'Target ready',
+                  selected: state.mode == RobotMode.track,
+                  enabled: !state.isRunning || state.mode == RobotMode.track,
+                  onTap: () => onSelectMode(RobotMode.track),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -506,51 +689,71 @@ class _TrayMetric extends StatelessWidget {
   }
 }
 
-class _BottomControls extends StatelessWidget {
-  const _BottomControls({
-    required this.state,
-    required this.cameraController,
-    required this.onModeDragProgress,
-    required this.onModeCommitted,
-    required this.onModeDragEnd,
+class _ModeCard extends StatelessWidget {
+  const _ModeCard({
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
   });
 
-  final RobotCameraState state;
-  final RobotCameraController cameraController;
-  final ValueChanged<double> onModeDragProgress;
-  final ValueChanged<RobotMode> onModeCommitted;
-  final VoidCallback onModeDragEnd;
+  final String title;
+  final String subtitle;
+  final String status;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(14, 0, 14, safeBottom > 0 ? 6 : 14),
+    return Opacity(
+      opacity: enabled ? 1 : 0.56,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color.fromRGBO(67, 165, 255, 0.18)
+                : Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? const Color.fromRGBO(67, 165, 255, 0.42)
+                  : Colors.white.withValues(alpha: 0.10),
+            ),
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SwipeModeSelector(
-                state: state,
-                onModeDragProgress: onModeDragProgress,
-                onModeCommitted: onModeCommitted,
-                onModeDragEnd: onModeDragEnd,
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(width: 52),
-                  _MainActionFab(state: state, cameraController: cameraController),
-                  const SizedBox(width: 18),
-                  _GearButton(state: state),
-                ],
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.68),
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _StatusPill(
+                label: status,
+                tone: status == 'Need target'
+                    ? _PillTone.warn
+                    : selected
+                        ? _PillTone.accent
+                        : _PillTone.good,
               ),
             ],
           ),
@@ -560,286 +763,163 @@ class _BottomControls extends StatelessWidget {
   }
 }
 
-class _SwipeModeSelector extends StatefulWidget {
-  const _SwipeModeSelector({
-    required this.state,
-    required this.onModeDragProgress,
-    required this.onModeCommitted,
-    required this.onModeDragEnd,
+class _MetaBox extends StatelessWidget {
+  const _MetaBox({
+    required this.label,
+    required this.value,
   });
 
-  final RobotCameraState state;
-  final ValueChanged<double> onModeDragProgress;
-  final ValueChanged<RobotMode> onModeCommitted;
-  final VoidCallback onModeDragEnd;
-
-  @override
-  State<_SwipeModeSelector> createState() => _SwipeModeSelectorState();
-}
-
-class _SwipeModeSelectorState extends State<_SwipeModeSelector> {
-  static const _order = <RobotMode>[RobotMode.auto, RobotMode.drive, RobotMode.track];
-  static const _labels = <String>['AUTO', 'DRIVE', 'TRACK'];
-
-  double _dragDx = 0;
-  double _dragVisualOffset = 0;
-  int get _index => _order.indexOf(widget.state.mode);
-
-  int _wrap(int value) {
-    final length = _order.length;
-    return ((value % length) + length) % length;
-  }
-
-  void _setIndex(int nextIndex) {
-    final wrapped = _wrap(nextIndex);
-    widget.state.setMode(_order[wrapped]);
-  }
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    final index = _index;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 36),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final slotWidth = constraints.maxWidth / 3;
-          final stripWidth = slotWidth * 5;
-          final maxVisualOffset = slotWidth * 0.5;
-          final visualOffset = _dragVisualOffset.clamp(-maxVisualOffset, maxVisualOffset);
-          final centeredOffset = constraints.maxWidth / 2 - slotWidth / 2 - slotWidth * 2 + visualOffset;
-          final visibleIndexes = [index - 2, index - 1, index, index + 1, index + 2];
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart: (_) {
-              _dragDx = 0;
-            },
-            onHorizontalDragUpdate: (details) {
-              setState(() {
-                _dragDx += details.delta.dx;
-                _dragVisualOffset = (_dragDx * 0.42).clamp(-maxVisualOffset, maxVisualOffset);
-              });
-              widget.onModeDragProgress((_dragVisualOffset.abs() / maxVisualOffset).clamp(0.0, 1.0));
-            },
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              final dx = _dragDx;
-              int nextIndex = index;
-
-              if (velocity.abs() > 280) {
-                nextIndex = velocity < 0 ? index + 1 : index - 1;
-              } else if (dx.abs() > slotWidth * 0.22) {
-                nextIndex = dx < 0 ? index + 1 : index - 1;
-              }
-
-              final committedMode = _order[_wrap(nextIndex)];
-              _setIndex(nextIndex);
-              widget.onModeCommitted(committedMode);
-              setState(() {
-                _dragDx = 0;
-                _dragVisualOffset = 0;
-              });
-            },
-            onHorizontalDragCancel: () {
-              widget.onModeDragEnd();
-              setState(() {
-                _dragDx = 0;
-                _dragVisualOffset = 0;
-              });
-            },
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: const Color.fromRGBO(16, 18, 26, 0.72),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Container(
-                            width: slotWidth - 8,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.10),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      ),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: centeredOffset, end: centeredOffset),
-                        duration: const Duration(milliseconds: 340),
-                        curve: Curves.easeOutQuart,
-                        builder: (context, animatedOffset, child) {
-                          return Positioned(
-                            left: animatedOffset,
-                            width: stripWidth,
-                            top: 0,
-                            bottom: 0,
-                            child: child!,
-                          );
-                        },
-                        child: Row(
-                          children: List.generate(visibleIndexes.length, (visibleI) {
-                            final actualIndex = visibleIndexes[visibleI];
-                            final wrappedIndex = _wrap(actualIndex);
-                            final distance = ((visibleI * slotWidth) + centeredOffset + slotWidth / 2 - constraints.maxWidth / 2).abs() / slotWidth;
-                            final emphasis = (1 - distance).clamp(0.0, 1.0);
-                            final scale = lerpDouble(0.88, 1.08, emphasis)!;
-                            final opacity = lerpDouble(0.18, 1.0, Curves.easeOut.transform(emphasis))!;
-
-                            return GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _setIndex(actualIndex),
-                              child: SizedBox(
-                                width: slotWidth,
-                                child: Center(
-                                  child: AnimatedScale(
-                                    scale: scale,
-                                    duration: const Duration(milliseconds: 140),
-                                    curve: Curves.easeOut,
-                                    child: Opacity(
-                                      opacity: opacity,
-                                      child: Text(
-                                        _labels[wrappedIndex],
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.8,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+    return Container(
+      constraints: const BoxConstraints(minHeight: 74),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.44),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.9,
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _MainActionFab extends StatelessWidget {
-  const _MainActionFab({required this.state, required this.cameraController});
-
-  final RobotCameraState state;
-  final RobotCameraController cameraController;
-
-  @override
-  Widget build(BuildContext context) {
-    final isRunning = state.isRunning;
-
-    final gradient = isRunning
-        ? const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFE55B54), Color(0xFFCC433C)],
-          )
-        : const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF3DDC84), Color(0xFF1FAE66)],
-          );
-
-    final shadow = isRunning
-        ? const BoxShadow(color: Color.fromRGBO(127, 29, 29, 0.42), blurRadius: 26, offset: Offset(0, 14))
-        : const BoxShadow(color: Color.fromRGBO(15, 118, 70, 0.42), blurRadius: 26, offset: Offset(0, 14));
-
-    return GestureDetector(
-      onTap: () {
-        if (isRunning) {
-          cameraController.stopFromUi();
-        } else {
-          cameraController.startFromUi();
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        width: 92,
-        height: 92,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-          boxShadow: [shadow],
-        ),
-        child: Center(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: isRunning
-                ? const Column(
-                    key: ValueKey('stop'),
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.stop_rounded, size: 24, color: Colors.white),
-                      SizedBox(height: 3),
-                      Text('STOP', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                    ],
-                  )
-                : const Column(
-                    key: ValueKey('start'),
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.play_arrow_rounded, size: 26, color: Colors.white),
-                      SizedBox(height: 3),
-                      Text('START', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                    ],
-                  ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({
+    required this.child,
+    this.padding = EdgeInsets.zero,
+    this.width,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          width: width,
+          padding: padding,
+          decoration: BoxDecoration(
+            color: const Color.fromRGBO(15, 21, 33, 0.78),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.22),
+                blurRadius: 24,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: child,
         ),
       ),
     );
   }
 }
 
-class _GearButton extends StatelessWidget {
-  const _GearButton({required this.state});
+enum _PillTone { neutral, accent, good, warn, bad }
 
-  final RobotCameraState state;
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.tone,
+  });
+
+  final String label;
+  final _PillTone tone;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder: (context) => _SettingsSheet(state: state),
-      ),
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+    final colors = switch (tone) {
+      _PillTone.neutral => (
+          background: Colors.white.withValues(alpha: 0.06),
+          border: Colors.white.withValues(alpha: 0.10),
+          foreground: Colors.white.withValues(alpha: 0.76),
         ),
-        child: Icon(Icons.settings_rounded, color: Colors.white.withValues(alpha: 0.74), size: 26),
+      _PillTone.accent => (
+          background: const Color.fromRGBO(67, 165, 255, 0.18),
+          border: const Color.fromRGBO(67, 165, 255, 0.32),
+          foreground: Colors.white,
+        ),
+      _PillTone.good => (
+          background: const Color.fromRGBO(61, 220, 132, 0.16),
+          border: const Color.fromRGBO(61, 220, 132, 0.24),
+          foreground: const Color(0xFFD1FAE5),
+        ),
+      _PillTone.warn => (
+          background: const Color.fromRGBO(246, 195, 68, 0.16),
+          border: const Color.fromRGBO(246, 195, 68, 0.24),
+          foreground: const Color(0xFFFEF3C7),
+        ),
+      _PillTone.bad => (
+          background: const Color.fromRGBO(229, 91, 84, 0.16),
+          border: const Color.fromRGBO(229, 91, 84, 0.24),
+          foreground: const Color(0xFFFEE2E2),
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: colors.foreground,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
+}
+
+class _PrimaryActionVisual {
+  const _PrimaryActionVisual({
+    required this.label,
+    required this.icon,
+    required this.background,
+    required this.enabled,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color background;
+  final bool enabled;
 }
 
 class _SettingsSheet extends StatelessWidget {
@@ -867,7 +947,11 @@ class _SettingsSheet extends StatelessWidget {
             label: 'Controller',
             trailing: _SettingsPicker<DriveControllerType>(
               value: state.driveController,
-              values: const [DriveControllerType.pc, DriveControllerType.gamepad, DriveControllerType.phone],
+              values: const [
+                DriveControllerType.pc,
+                DriveControllerType.gamepad,
+                DriveControllerType.phone,
+              ],
               labelFor: (v) => switch (v) {
                 DriveControllerType.pc => 'PC',
                 DriveControllerType.gamepad => 'Gamepad',
@@ -887,8 +971,16 @@ class _SettingsSheet extends StatelessWidget {
             trailing: _SettingsPicker<SpeedMode>(
               value: state.driveSpeedMode,
               values: const [SpeedMode.low, SpeedMode.normal, SpeedMode.high],
-              labelFor: (v) => switch (v) { SpeedMode.low => 'Low', SpeedMode.normal => 'Normal', SpeedMode.high => 'High' },
-              colorFor: (v) => switch (v) { SpeedMode.low => _speedLow, SpeedMode.normal => _speedNormal, SpeedMode.high => _speedHigh },
+              labelFor: (v) => switch (v) {
+                SpeedMode.low => 'Low',
+                SpeedMode.normal => 'Normal',
+                SpeedMode.high => 'High',
+              },
+              colorFor: (v) => switch (v) {
+                SpeedMode.low => _speedLow,
+                SpeedMode.normal => _speedNormal,
+                SpeedMode.high => _speedHigh,
+              },
               onSelected: state.setDriveSpeedMode,
             ),
           ),
@@ -899,7 +991,11 @@ class _SettingsSheet extends StatelessWidget {
             trailing: _SettingsPicker<AutoModel>(
               value: state.autoModel,
               values: const [AutoModel.modelA, AutoModel.modelB, AutoModel.modelC],
-              labelFor: (v) => switch (v) { AutoModel.modelA => 'Model A', AutoModel.modelB => 'Model B', AutoModel.modelC => 'Model C' },
+              labelFor: (v) => switch (v) {
+                AutoModel.modelA => 'Model A',
+                AutoModel.modelB => 'Model B',
+                AutoModel.modelC => 'Model C',
+              },
               onSelected: state.setAutoModel,
             ),
           ),
@@ -908,9 +1004,21 @@ class _SettingsSheet extends StatelessWidget {
             label: 'Device',
             trailing: _SettingsPicker<ComputeDevice>(
               value: state.autoDevice,
-              values: const [ComputeDevice.cpu, ComputeDevice.gpu, ComputeDevice.nnapi],
-              labelFor: (v) => switch (v) { ComputeDevice.cpu => 'CPU', ComputeDevice.gpu => 'GPU', ComputeDevice.nnapi => 'NNAPI' },
-              iconFor: (v) => switch (v) { ComputeDevice.cpu => Icons.memory_rounded, ComputeDevice.gpu => Icons.graphic_eq_rounded, ComputeDevice.nnapi => Icons.bolt_rounded },
+              values: const [
+                ComputeDevice.cpu,
+                ComputeDevice.gpu,
+                ComputeDevice.nnapi,
+              ],
+              labelFor: (v) => switch (v) {
+                ComputeDevice.cpu => 'CPU',
+                ComputeDevice.gpu => 'GPU',
+                ComputeDevice.nnapi => 'NNAPI',
+              },
+              iconFor: (v) => switch (v) {
+                ComputeDevice.cpu => Icons.memory_rounded,
+                ComputeDevice.gpu => Icons.graphic_eq_rounded,
+                ComputeDevice.nnapi => Icons.bolt_rounded,
+              },
               onSelected: state.setAutoDevice,
             ),
           ),
@@ -920,8 +1028,16 @@ class _SettingsSheet extends StatelessWidget {
             trailing: _SettingsPicker<SpeedMode>(
               value: state.autoSpeedMode,
               values: const [SpeedMode.low, SpeedMode.normal, SpeedMode.high],
-              labelFor: (v) => switch (v) { SpeedMode.low => 'Low', SpeedMode.normal => 'Normal', SpeedMode.high => 'High' },
-              colorFor: (v) => switch (v) { SpeedMode.low => _speedLow, SpeedMode.normal => _speedNormal, SpeedMode.high => _speedHigh },
+              labelFor: (v) => switch (v) {
+                SpeedMode.low => 'Low',
+                SpeedMode.normal => 'Normal',
+                SpeedMode.high => 'High',
+              },
+              colorFor: (v) => switch (v) {
+                SpeedMode.low => _speedLow,
+                SpeedMode.normal => _speedNormal,
+                SpeedMode.high => _speedHigh,
+              },
               onSelected: state.setAutoSpeedMode,
             ),
           ),
@@ -932,7 +1048,11 @@ class _SettingsSheet extends StatelessWidget {
             trailing: _SettingsPicker<TrackModel>(
               value: state.trackModel,
               values: const [TrackModel.modelA, TrackModel.modelB, TrackModel.modelC],
-              labelFor: (v) => switch (v) { TrackModel.modelA => 'Model A', TrackModel.modelB => 'Model B', TrackModel.modelC => 'Model C' },
+              labelFor: (v) => switch (v) {
+                TrackModel.modelA => 'Model A',
+                TrackModel.modelB => 'Model B',
+                TrackModel.modelC => 'Model C',
+              },
               onSelected: state.setTrackModel,
             ),
           ),
@@ -941,7 +1061,12 @@ class _SettingsSheet extends StatelessWidget {
             label: 'Target type',
             trailing: _SettingsPicker<TrackTargetType>(
               value: state.trackTargetType,
-              values: const [TrackTargetType.person, TrackTargetType.dog, TrackTargetType.bicycle, TrackTargetType.cat],
+              values: const [
+                TrackTargetType.person,
+                TrackTargetType.dog,
+                TrackTargetType.bicycle,
+                TrackTargetType.cat,
+              ],
               labelFor: (v) => switch (v) {
                 TrackTargetType.person => 'Person',
                 TrackTargetType.dog => 'Dog',
@@ -962,9 +1087,21 @@ class _SettingsSheet extends StatelessWidget {
             label: 'Device',
             trailing: _SettingsPicker<ComputeDevice>(
               value: state.trackDevice,
-              values: const [ComputeDevice.cpu, ComputeDevice.gpu, ComputeDevice.nnapi],
-              labelFor: (v) => switch (v) { ComputeDevice.cpu => 'CPU', ComputeDevice.gpu => 'GPU', ComputeDevice.nnapi => 'NNAPI' },
-              iconFor: (v) => switch (v) { ComputeDevice.cpu => Icons.memory_rounded, ComputeDevice.gpu => Icons.graphic_eq_rounded, ComputeDevice.nnapi => Icons.bolt_rounded },
+              values: const [
+                ComputeDevice.cpu,
+                ComputeDevice.gpu,
+                ComputeDevice.nnapi,
+              ],
+              labelFor: (v) => switch (v) {
+                ComputeDevice.cpu => 'CPU',
+                ComputeDevice.gpu => 'GPU',
+                ComputeDevice.nnapi => 'NNAPI',
+              },
+              iconFor: (v) => switch (v) {
+                ComputeDevice.cpu => Icons.memory_rounded,
+                ComputeDevice.gpu => Icons.graphic_eq_rounded,
+                ComputeDevice.nnapi => Icons.bolt_rounded,
+              },
               onSelected: state.setTrackDevice,
             ),
           ),
@@ -974,8 +1111,16 @@ class _SettingsSheet extends StatelessWidget {
             trailing: _SettingsPicker<SpeedMode>(
               value: state.trackSpeedMode,
               values: const [SpeedMode.low, SpeedMode.normal, SpeedMode.high],
-              labelFor: (v) => switch (v) { SpeedMode.low => 'Low', SpeedMode.normal => 'Normal', SpeedMode.high => 'High' },
-              colorFor: (v) => switch (v) { SpeedMode.low => _speedLow, SpeedMode.normal => _speedNormal, SpeedMode.high => _speedHigh },
+              labelFor: (v) => switch (v) {
+                SpeedMode.low => 'Low',
+                SpeedMode.normal => 'Normal',
+                SpeedMode.high => 'High',
+              },
+              colorFor: (v) => switch (v) {
+                SpeedMode.low => _speedLow,
+                SpeedMode.normal => _speedNormal,
+                SpeedMode.high => _speedHigh,
+              },
               onSelected: state.setTrackSpeedMode,
             ),
           ),
@@ -1013,8 +1158,16 @@ class _SettingsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    switch (state.mode) { RobotMode.drive => 'Drive settings', RobotMode.auto => 'Auto settings', RobotMode.track => 'Track settings' },
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+                    switch (state.mode) {
+                      RobotMode.drive => 'Drive settings',
+                      RobotMode.auto => 'Auto settings',
+                      RobotMode.track => 'Track settings',
+                    },
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   ...rows,
@@ -1049,7 +1202,11 @@ class _SettingsRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           trailing,
@@ -1094,7 +1251,11 @@ class _SettingsPicker<T> extends StatelessWidget {
                 child: Row(
                   children: [
                     if (iconFor != null) ...[
-                      Icon(iconFor!(v), size: 18, color: Colors.white.withValues(alpha: 0.82)),
+                      Icon(
+                        iconFor!(v),
+                        size: 18,
+                        color: Colors.white.withValues(alpha: 0.82),
+                      ),
                       const SizedBox(width: 10),
                     ],
                     Text(
@@ -1127,7 +1288,11 @@ class _SettingsPicker<T> extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Icon(Icons.expand_more_rounded, color: Colors.white.withValues(alpha: 0.62), size: 20),
+          Icon(
+            Icons.expand_more_rounded,
+            color: Colors.white.withValues(alpha: 0.62),
+            size: 20,
+          ),
         ],
       ),
     );
@@ -1150,12 +1315,20 @@ class _TrackOverlay extends StatelessWidget {
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color.fromRGBO(83, 205, 225, 0.26),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               Container(
@@ -1163,7 +1336,10 @@ class _TrackOverlay extends StatelessWidget {
                 height: 116,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: const Color(0xFF81E6FF), width: 2),
+                  border: Border.all(
+                    color: const Color(0xFF81E6FF),
+                    width: 2,
+                  ),
                   color: const Color.fromRGBO(103, 232, 249, 0.10),
                 ),
                 child: Stack(
@@ -1171,7 +1347,12 @@ class _TrackOverlay extends StatelessWidget {
                     _TrackCorner(top: 14, left: 14),
                     _TrackCorner(top: 14, right: 14, rightSide: true),
                     _TrackCorner(bottom: 14, left: 14, bottomSide: true),
-                    _TrackCorner(bottom: 14, right: 14, rightSide: true, bottomSide: true),
+                    _TrackCorner(
+                      bottom: 14,
+                      right: 14,
+                      rightSide: true,
+                      bottomSide: true,
+                    ),
                   ],
                 ),
               ),
@@ -1184,7 +1365,14 @@ class _TrackOverlay extends StatelessWidget {
 }
 
 class _TrackCorner extends StatelessWidget {
-  const _TrackCorner({this.top, this.left, this.right, this.bottom, this.rightSide = false, this.bottomSide = false});
+  const _TrackCorner({
+    this.top,
+    this.left,
+    this.right,
+    this.bottom,
+    this.rightSide = false,
+    this.bottomSide = false,
+  });
 
   final double? top;
   final double? left;
@@ -1205,19 +1393,206 @@ class _TrackCorner extends StatelessWidget {
         height: 24,
         decoration: BoxDecoration(
           border: Border(
-            top: !bottomSide ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
-            left: !rightSide ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
-            right: rightSide ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
-            bottom: bottomSide ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
+            top: !bottomSide
+                ? const BorderSide(color: Colors.white, width: 2)
+                : BorderSide.none,
+            left: !rightSide
+                ? const BorderSide(color: Colors.white, width: 2)
+                : BorderSide.none,
+            right: rightSide
+                ? const BorderSide(color: Colors.white, width: 2)
+                : BorderSide.none,
+            bottom: bottomSide
+                ? const BorderSide(color: Colors.white, width: 2)
+                : BorderSide.none,
           ),
           borderRadius: BorderRadius.only(
-            topLeft: !rightSide && !bottomSide ? const Radius.circular(14) : Radius.zero,
-            topRight: rightSide && !bottomSide ? const Radius.circular(14) : Radius.zero,
-            bottomLeft: !rightSide && bottomSide ? const Radius.circular(14) : Radius.zero,
-            bottomRight: rightSide && bottomSide ? const Radius.circular(14) : Radius.zero,
+            topLeft: !rightSide && !bottomSide
+                ? const Radius.circular(14)
+                : Radius.zero,
+            topRight: rightSide && !bottomSide
+                ? const Radius.circular(14)
+                : Radius.zero,
+            bottomLeft: !rightSide && bottomSide
+                ? const Radius.circular(14)
+                : Radius.zero,
+            bottomRight: rightSide && bottomSide
+                ? const Radius.circular(14)
+                : Radius.zero,
           ),
         ),
       ),
     );
   }
+}
+
+String _modeLabel(RobotMode mode) {
+  return switch (mode) {
+    RobotMode.drive => 'Drive',
+    RobotMode.auto => 'Auto',
+    RobotMode.track => 'Track',
+  };
+}
+
+String _ownerLabel(RobotCameraState state) {
+  if (state.driveController == DriveControllerType.gamepad &&
+      state.gamepadConnected) {
+    return 'Gamepad';
+  }
+  if (state.driveController == DriveControllerType.phone &&
+      state.connection.bluetoothConnected) {
+    return 'Remote Phone';
+  }
+  if (state.driveController == DriveControllerType.pc) {
+    return 'PC';
+  }
+  if (state.gamepadConnected) {
+    return 'Gamepad standby';
+  }
+  return 'None';
+}
+
+String _headline(RobotCameraState state, bool initialized) {
+  if (!initialized) return 'Starting Robot Runtime';
+  if (!state.connection.usbConnected) return 'Connect Robot';
+  return switch (state.mode) {
+    RobotMode.drive => state.isRunning ? 'Drive Active' : 'Drive Standby',
+    RobotMode.auto => state.isRunning ? 'Auto Active' : 'Auto Ready',
+    RobotMode.track => state.trackingPoint == null
+        ? 'Track Needs Target'
+        : state.isRunning
+            ? 'Tracking Active'
+            : 'Track Ready',
+  };
+}
+
+String _body(RobotCameraState state, bool initialized, bool advancedOpen) {
+  if (!initialized) {
+    return 'Core services are still starting. Controls stay secondary until the runtime is ready.';
+  }
+  if (!state.connection.usbConnected) {
+    return 'The robot bridge is not connected yet. Connect the robot first before entering normal runtime.';
+  }
+  return switch (state.mode) {
+    RobotMode.drive => state.isRunning
+        ? 'Drive is the primary lane. While active, mode switching is intentionally suppressed.'
+        : advancedOpen
+            ? 'Drive remains the default lane even while advanced modes are visible.'
+            : 'Drive is the default runtime. Open advanced modes only when you intentionally need Auto or Track.',
+    RobotMode.auto =>
+      'Auto is treated as a deliberate advanced workflow. Model selection stays secondary to the main runtime surface.',
+    RobotMode.track => state.trackingPoint == null
+        ? 'Track requires one explicit camera target before it can begin.'
+        : 'Track is staged through target selection first, then execution.',
+  };
+}
+
+String _nextStepLabel(RobotCameraState state, bool initialized) {
+  if (!initialized) return 'Starting';
+  if (!state.connection.usbConnected) return 'Connect Robot';
+  if (state.isRunning) {
+    return switch (state.mode) {
+      RobotMode.drive => 'Stop',
+      RobotMode.auto => 'Stop Auto',
+      RobotMode.track => 'Stop Tracking',
+    };
+  }
+  return switch (state.mode) {
+    RobotMode.drive => 'Start',
+    RobotMode.auto => 'Start Auto',
+    RobotMode.track =>
+      state.trackingPoint == null ? 'Select Target' : 'Start Tracking',
+  };
+}
+
+String _footerNote(RobotCameraState state, bool advancedOpen) {
+  if (state.isRunning) {
+    return 'Active runtime takes priority. Stop before switching role or changing advanced modes.';
+  }
+  if (advancedOpen) {
+    return 'Advanced modes are visible by choice, not by default. This keeps the main shell focused on robot operation.';
+  }
+  return 'Drive stays primary. Advanced capability is available, but it does not dominate the base runtime.';
+}
+
+String _autoModelLabel(AutoModel model) {
+  return switch (model) {
+    AutoModel.modelA => 'Model A',
+    AutoModel.modelB => 'Model B',
+    AutoModel.modelC => 'Model C',
+  };
+}
+
+String _trackModelLabel(TrackModel model) {
+  return switch (model) {
+    TrackModel.modelA => 'Model A',
+    TrackModel.modelB => 'Model B',
+    TrackModel.modelC => 'Model C',
+  };
+}
+
+String _computeDeviceLabel(ComputeDevice device) {
+  return switch (device) {
+    ComputeDevice.cpu => 'CPU',
+    ComputeDevice.gpu => 'GPU',
+    ComputeDevice.nnapi => 'NNAPI',
+  };
+}
+
+String _targetTypeLabel(TrackTargetType targetType) {
+  return switch (targetType) {
+    TrackTargetType.person => 'Person',
+    TrackTargetType.dog => 'Dog',
+    TrackTargetType.bicycle => 'Bicycle',
+    TrackTargetType.cat => 'Cat',
+  };
+}
+
+_PrimaryActionVisual _primaryActionFor(RobotCameraState state, bool initialized) {
+  if (!initialized) {
+    return const _PrimaryActionVisual(
+      label: 'Starting...',
+      icon: Icons.hourglass_top_rounded,
+      background: Color(0xFF334155),
+      enabled: false,
+    );
+  }
+  if (!state.connection.usbConnected) {
+    return const _PrimaryActionVisual(
+      label: 'Connect Robot',
+      icon: Icons.usb_rounded,
+      background: Color(0xFFD97706),
+      enabled: true,
+    );
+  }
+  if (state.isRunning) {
+    return _PrimaryActionVisual(
+      label: switch (state.mode) {
+        RobotMode.drive => 'Stop',
+        RobotMode.auto => 'Stop Auto',
+        RobotMode.track => 'Stop Tracking',
+      },
+      icon: Icons.stop_rounded,
+      background: const Color(0xFFCC433C),
+      enabled: true,
+    );
+  }
+  return _PrimaryActionVisual(
+    label: switch (state.mode) {
+      RobotMode.drive => 'Start',
+      RobotMode.auto => 'Start Auto',
+      RobotMode.track =>
+        state.trackingPoint == null ? 'Select Target' : 'Start Tracking',
+    },
+    icon: switch (state.mode) {
+      RobotMode.drive => Icons.play_arrow_rounded,
+      RobotMode.auto => Icons.auto_awesome_rounded,
+      RobotMode.track =>
+        state.trackingPoint == null ? Icons.ads_click_rounded : Icons.play_arrow_rounded,
+    },
+    background: state.mode == RobotMode.track && state.trackingPoint == null
+        ? const Color(0xFFD97706)
+        : const Color(0xFF1FAE66),
+    enabled: true,
+  );
 }

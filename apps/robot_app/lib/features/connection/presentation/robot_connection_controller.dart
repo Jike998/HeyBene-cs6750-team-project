@@ -12,6 +12,9 @@ class RobotConnectionController extends ChangeNotifier {
         bluetoothConnected: bootstrap.networkService.controllerConnected,
         usbConnected: bootstrap.robotConnectionService.usbConnected,
         videoStable: bootstrap.networkService.isRunning,
+        pcConnected: bootstrap.pcLinkService.controllerConnected,
+        pcLinkPort: bootstrap.pcLinkService.port,
+        pcClientAddress: bootstrap.pcLinkService.lastClientAddress,
       );
 
   Future<void> connectUsb() async {
@@ -34,8 +37,17 @@ class RobotConnectionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> startPcLink() async {
+    await bootstrap.pcLinkService.startServer();
+    notifyListeners();
+  }
+
+  Future<void> stopPcLink() async {
+    await bootstrap.pcLinkService.stopServer();
+    notifyListeners();
+  }
+
   Future<void> connectBle() async {
-    await bootstrap.robotConnectionService.connectBle();
     notifyListeners();
   }
 

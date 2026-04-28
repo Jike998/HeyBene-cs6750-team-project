@@ -5,6 +5,8 @@ import '../../telemetry/domain/telemetry_snapshot.dart';
 import '../domain/control_layout.dart';
 
 class ControlState extends ChangeNotifier {
+  bool _disposed = false;
+
   ControlLayout layout = ControlLayout.dual;
   ConnectionSnapshot connection = ConnectionSnapshot.initial;
   TelemetrySnapshot telemetry = TelemetrySnapshot.initial.copyWith(
@@ -14,7 +16,7 @@ class ControlState extends ChangeNotifier {
 
   bool initialized = false;
   bool cameraInitialized = false;
-  bool usbBusy = false;
+  bool linkBusy = false;
   bool gamepadConnected = false;
   String gamepadDebug = 'Waiting for gamepad input';
   String? initializationError;
@@ -48,9 +50,9 @@ class ControlState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setUsbBusy(bool value) {
-    if (usbBusy == value) return;
-    usbBusy = value;
+  void setLinkBusy(bool value) {
+    if (linkBusy == value) return;
+    linkBusy = value;
     notifyListeners();
   }
 
@@ -189,5 +191,17 @@ class ControlState extends ChangeNotifier {
     if (notify) {
       notifyListeners();
     }
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

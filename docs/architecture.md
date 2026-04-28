@@ -2,12 +2,17 @@
 
 ## Mainline Scope
 
-The current team-project mainline includes only two apps:
+The current team-project mainline includes two independently runnable apps:
 
-- `apps/control_app`
-- `apps/robot_app`
+- `apps/control_app`: mainline merged app, currently launched through `FusionApp`
+- `apps/robot_app`: standalone robot-side app
 
 `apps/controller_app` is not part of the initial GitHub mainline.
+
+The current product direction is:
+
+- one-phone role switching inside `apps/control_app`
+- keep `apps/robot_app` runnable as a separate app
 
 ## Repository Layout
 
@@ -34,16 +39,25 @@ packages/
 
 ### Active
 
+- `apps/control_app/lib/main.dart`
+- `apps/control_app/lib/app/fusion_app.dart`
 - `apps/control_app/lib/app/control_app.dart`
 - `apps/control_app/lib/features/control`
+- `apps/control_app/lib/features/connection`
+- `apps/control_app/lib/features/telemetry`
 - `apps/robot_app/lib/app`
 - `apps/robot_app/lib/features`
 - `apps/*/lib/services`
 - `packages/*`
 
-### Archived
+### Temporary Active Dependency
 
 - `apps/control_app/lib/legacy/robot_shell`
+
+This path still sits under `legacy/`, but it is currently used by `FusionApp` host mode. Treat it as transitional code, not a clean long-term home for new shared logic.
+
+### Archived
+
 - `apps/controller_app`
 - `docs/design`
 
@@ -95,6 +109,13 @@ Mock or fake service implementations for teammates who cannot test with real har
 The future landing zone for selected APK/Android logic migrated from OpenBene.
 
 ## Current Practical Rule
+
+Current practical collaboration rule:
+
+- `FusionApp` is the mainline merged experience
+- `robot_app` remains independently runnable
+- if work touches host mode inside `FusionApp`, expect some temporary coupling to `apps/control_app/lib/legacy/robot_shell`
+- when possible, move shared models and reusable logic toward `packages/shared_models` and `packages/openbene_bridge`
 
 If a teammate cannot access hardware, they should still be able to contribute safely by working in:
 

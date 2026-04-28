@@ -30,5 +30,8 @@ Thumbs.db
 **/*.out
 **/*.err
 
+# Claude local project settings
+.claude/settings.local.json
+
 # Large local release assets should not be committed directly
 /downloads/android/team-builds/

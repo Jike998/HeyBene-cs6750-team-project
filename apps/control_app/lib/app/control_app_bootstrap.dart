@@ -23,6 +23,7 @@ class ControlAppBootstrap {
   Future<void> initializeCore() async {
     await robotConnectionService.initialize();
     await gamepadService.initialize();
+    await linkService.initialize();
   }
 
   Future<void> initializeCamera() async {

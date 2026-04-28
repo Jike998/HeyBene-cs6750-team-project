@@ -48,7 +48,6 @@ class BluetoothRobotLinkServiceAdapter {
 
   Future<void> initialize() async {
     if (_initialized || !Platform.isAndroid) return;
-    await _ensureBluetoothPermissions();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       _handleEvent,
     );
@@ -102,12 +101,25 @@ class BluetoothRobotLinkServiceAdapter {
       'connect',
       {'address': address},
     );
-    return Map<String, dynamic>.from(response ?? const {});
+    final mapped = Map<String, dynamic>.from(response ?? const {});
+    if (mapped['success'] == true) {
+      _connected = true;
+      _deviceName = mapped['deviceName']?.toString();
+      _deviceAddress = mapped['deviceAddress']?.toString();
+    } else {
+      _connected = false;
+      _deviceName = null;
+      _deviceAddress = null;
+    }
+    return mapped;
   }
 
   Future<void> disconnect() async {
     if (!Platform.isAndroid) return;
     await _methodChannel.invokeMethod<bool>('disconnect');
+    _connected = false;
+    _deviceName = null;
+    _deviceAddress = null;
   }
 
   Future<bool> sendPayload(Map<String, dynamic> payload) async {

@@ -4,8 +4,8 @@ This repository is organized for the Georgia Tech CS6750 team project.
 
 The current mainline scope is:
 
-- `apps/control_app`: controller-side Flutter UI
-- `apps/robot_app`: robot-side Flutter UI
+- `apps/control_app`: the mainline Flutter app, including the `FusionApp` one-phone role-switch flow
+- `apps/robot_app`: the standalone robot-side Flutter app, kept independently runnable
 
 `apps/controller_app` is intentionally kept out of the team-project mainline for now. It remains local as an archive/reference, but it is not part of the first GitHub push.
 
@@ -34,7 +34,8 @@ openbot-ui/
 
 ## Why This Layout
 
-- `control_app` and `robot_app` are both active UI workstreams.
+- `control_app` is the current product-facing mainline for the merged one-phone experience.
+- `robot_app` remains independently runnable for standalone robot-side development and comparison.
 - `docs/` is the shared entry point for teammates who need context quickly.
 - `packages/` is reserved for shared code, mock implementations, and the later OpenBene APK migration.
 - design artifacts were moved into `docs/design/` so the repository root stays readable.
@@ -53,6 +54,8 @@ openbot-ui/
 
 ### `control_app`
 
+Mainline runtime for the merged one-phone experience.
+
 ```powershell
 cd C:\Users\jiken\Desktop\openbot-ui\apps\control_app
 flutter pub get
@@ -60,6 +63,8 @@ flutter run
 ```
 
 ### `robot_app`
+
+Standalone robot-side runtime that remains independently runnable.
 
 ```powershell
 cd C:\Users\jiken\Desktop\openbot-ui\apps\robot_app
@@ -72,7 +77,8 @@ flutter run
 - UI-first contributors should spend most of their time in `lib/features` and `lib/core`.
 - hardware/backend integration should be isolated behind `lib/services` and later `packages/openbene_bridge`.
 - teammates without hardware should still be able to contribute through UI, state, design review, and mock-oriented planning.
-- `apps/control_app/lib/legacy` is archive code, not a mainline feature area.
+- `apps/control_app/lib/legacy/robot_shell` is currently a temporary active dependency of `FusionApp` host mode, even though the folder name still says `legacy`.
+- avoid treating `apps/control_app/lib/legacy/robot_shell` as a long-term destination for new shared logic; prefer active paths or shared packages when possible.
 
 ## References
 

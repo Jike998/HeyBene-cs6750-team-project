@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Robot Runtime Demo - Workflow Card</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1320;
+        --panel: #0f172a;
+        --panel-soft: rgba(15, 23, 42, 0.82);
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #fb7185;
+        --accent: #22c55e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top, rgba(34, 197, 94, 0.12), transparent 30%),
+          linear-gradient(180deg, #09111c, #0c1424 58%, #0d192b);
+        color: var(--text);
+        font-family: "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .layout {
+        display: flex;
+        gap: 28px;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 28px;
+        flex-wrap: wrap;
+      }
+
+      .phone {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        overflow: hidden;
+        border-radius: 36px;
+        background: #050913;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.45);
+      }
+
+      .feed {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 68% 26%, rgba(34, 197, 94, 0.14), transparent 28%),
+          linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(8, 15, 30, 0.16), rgba(8, 15, 30, 0.48)),
+          radial-gradient(circle at center, rgba(148, 163, 184, 0.16), rgba(15, 23, 42, 0.92));
+        background-size: auto, 28px 28px, 28px 28px, auto, auto;
+      }
+
+      .feed::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(2, 6, 23, 0.24), transparent 18%, transparent 76%, rgba(2, 6, 23, 0.86)),
+          radial-gradient(circle at center, transparent 0%, transparent 52%, rgba(2, 6, 23, 0.36) 100%);
+      }
+
+      .target-box {
+        position: absolute;
+        left: 50%;
+        top: 42%;
+        width: 142px;
+        height: 142px;
+        margin-left: -71px;
+        margin-top: -71px;
+        border-radius: 24px;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 0 12px rgba(15, 23, 42, 0.18);
+        opacity: 0;
+        transform: scale(0.9);
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+
+      .target-box.active {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .glass {
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+        backdrop-filter: blur(18px);
+      }
+
+      .top {
+        position: absolute;
+        inset: 0 0 auto 0;
+        padding: 18px 16px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .health {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 22px;
+      }
+
+      .health-left,
+      .health-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .pill.good {
+        color: #d1fae5;
+        border-color: rgba(52, 211, 153, 0.24);
+        background: rgba(16, 185, 129, 0.12);
+      }
+
+      .pill.warn {
+        color: #fef3c7;
+        border-color: rgba(251, 191, 36, 0.24);
+        background: rgba(245, 158, 11, 0.12);
+      }
+
+      .pill.bad {
+        color: #ffe4e6;
+        border-color: rgba(251, 113, 133, 0.24);
+        background: rgba(244, 63, 94, 0.12);
+      }
+
+      .mode-marker {
+        align-self: flex-start;
+        min-height: 34px;
+        padding: 0 14px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid rgba(34, 197, 94, 0.26);
+        background: rgba(34, 197, 94, 0.16);
+        color: #dcfce7;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .workflow-card {
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: 14px;
+        padding: 16px;
+        border-radius: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .workflow-card.fault {
+        border-color: rgba(251, 113, 133, 0.28);
+        background: rgba(41, 12, 21, 0.84);
+      }
+
+      .card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .card-top h2 {
+        margin: 6px 0 0;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+
+      .mode-badge {
+        min-height: 42px;
+        min-width: 84px;
+        padding: 0 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.05);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+      }
+
+      .mode-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .mode-chip {
+        min-height: 42px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+      }
+
+      .mode-chip.active {
+        color: white;
+        border-color: rgba(34, 197, 94, 0.28);
+        background: rgba(34, 197, 94, 0.16);
+      }
+
+      .step-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+
+      .step {
+        min-height: 72px;
+        padding: 10px 8px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        color: #dbe4ef;
+      }
+
+      .step strong {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 12px;
+      }
+
+      .step small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .step.done {
+        border-color: rgba(52, 211, 153, 0.24);
+        background: rgba(16, 185, 129, 0.12);
+      }
+
+      .step.active {
+        border-color: rgba(34, 197, 94, 0.32);
+        background: rgba(34, 197, 94, 0.16);
+      }
+
+      .step.blocked {
+        border-style: dashed;
+      }
+
+      .step.na {
+        opacity: 0.55;
+      }
+
+      .body-copy {
+        margin: 0;
+        color: #d1d5db;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .status-box {
+        min-height: 76px;
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .status-box .k {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .status-box .v {
+        margin-top: 8px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .cta {
+        min-height: 64px;
+        border: none;
+        border-radius: 20px;
+        font-size: 17px;
+        font-weight: 800;
+        color: white;
+        background: linear-gradient(180deg, #22c55e, #15803d);
+      }
+
+      .cta.stop {
+        background: linear-gradient(180deg, #fb7185, #e11d48);
+      }
+
+      .cta.warn {
+        background: linear-gradient(180deg, #fbbf24, #d97706);
+      }
+
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .panel {
+        width: 360px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      }
+
+      .panel h1,
+      .panel h2,
+      .panel p {
+        margin-top: 0;
+      }
+
+      .scenario-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .scenario-grid button {
+        min-height: 42px;
+        text-align: left;
+        padding: 0 12px;
+        border-radius: 14px;
+        color: white;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .scenario-grid button.active {
+        border-color: rgba(34, 197, 94, 0.42);
+        background: rgba(34, 197, 94, 0.16);
+      }
+
+      .legend {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 10px;
+      }
+
+      .legend-item {
+        font-size: 13px;
+        color: #d1d5db;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <section class="phone">
+        <div class="feed"></div>
+        <div id="targetBox" class="target-box"></div>
+
+        <div class="top">
+          <div class="health glass">
+            <div class="health-left">
+              <span class="pill">Robot</span>
+              <span id="bridgePill" class="pill good">Bridge Ready</span>
+            </div>
+            <div class="health-right">
+              <span id="ownerPill" class="pill">Owner: Gamepad</span>
+              <span id="powerPill" class="pill">84% / 18ms</span>
+            </div>
+          </div>
+
+          <div id="modeMarker" class="mode-marker">Workflow Guided</div>
+        </div>
+
+        <div id="workflowCard" class="workflow-card glass">
+          <div class="card-top">
+            <div>
+              <div id="cardEyebrow" class="eyebrow">Step 4 of 4</div>
+              <h2 id="headline">Ready To Run</h2>
+            </div>
+            <div id="modeBadge" class="mode-badge">Drive</div>
+          </div>
+
+          <div class="mode-row">
+            <div id="modeDrive" class="mode-chip active">Drive</div>
+            <div id="modeAuto" class="mode-chip">Auto</div>
+            <div id="modeTrack" class="mode-chip">Track</div>
+          </div>
+
+          <div class="step-row">
+            <div id="stepHealth" class="step">
+              <strong>1</strong>
+              <small>Health</small>
+            </div>
+            <div id="stepModel" class="step">
+              <strong>2</strong>
+              <small>Model</small>
+            </div>
+            <div id="stepTarget" class="step">
+              <strong>3</strong>
+              <small>Target</small>
+            </div>
+            <div id="stepRun" class="step active">
+              <strong>4</strong>
+              <small>Run</small>
+            </div>
+          </div>
+
+          <p id="bodyCopy" class="body-copy">The workflow card makes the next required step more important than raw mode navigation.</p>
+
+          <div class="status-grid">
+            <div class="status-box">
+              <div class="k">Health</div>
+              <div id="healthValue" class="v">Bridge ready</div>
+            </div>
+            <div class="status-box">
+              <div class="k">Model</div>
+              <div id="modelValue" class="v">Not needed for Drive</div>
+            </div>
+            <div class="status-box">
+              <div class="k">Target</div>
+              <div id="targetValue" class="v">Not needed for Drive</div>
+            </div>
+            <div class="status-box">
+              <div class="k">Run State</div>
+              <div id="runValue" class="v">Ready to start</div>
+            </div>
+          </div>
+
+          <button id="ctaButton" class="cta" type="button">Start</button>
+          <div id="footerNote" class="note">This structure tries to remove ambiguity by turning every blocked state into an explicit next step.</div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <h1>Workflow Card</h1>
+        <p>This demo makes the bottom workflow card the dominant interaction surface. It cares more about the next required step than about keeping mode controls constantly visible.</p>
+
+        <h2>Scenario Switcher</h2>
+        <div class="scenario-grid">
+          <button data-scenario="setup">Setup Needed</button>
+          <button data-scenario="drive_idle">Drive Idle</button>
+          <button data-scenario="drive_active">Drive Active</button>
+          <button data-scenario="auto_missing">Auto Missing Model</button>
+          <button data-scenario="auto_ready">Auto Ready</button>
+          <button data-scenario="track_target">Track Needs Target</button>
+          <button data-scenario="fault">Fault / Recovery</button>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><strong>Strength:</strong> users always get a strong answer to “what do I do next?”</div>
+          <div class="legend-item"><strong>Risk:</strong> the card may feel more opinionated and less flexible for expert users.</div>
+          <div class="legend-item"><strong>Best use:</strong> if Auto and Track readiness should be staged as explicit workflows instead of passive settings.</div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const scenarios = {
+        setup: {
+          eyebrow: "Step 1 of 4",
+          headline: "Finish Setup First",
+          body: "The workflow begins by resolving robot health. Until that gate is cleared, the rest of the runtime stays visually subordinate.",
+          bridge: ["Bridge Missing", "bad"],
+          owner: "Owner: None",
+          power: "84% / --",
+          modeLabel: "Workflow Guided",
+          mode: "Drive",
+          steps: ["active", "blocked", "blocked", "blocked"],
+          health: "Bridge missing",
+          model: "Waiting for setup",
+          target: "Waiting for setup",
+          run: "Blocked",
+          cta: ["Connect Robot", "warn"],
+          note: "This tests whether a task-guided surface makes setup feel simpler than showing a partially usable runtime shell.",
+          targetOverlay: false,
+          faultTone: false
+        },
+        drive_idle: {
+          eyebrow: "Step 4 of 4",
+          headline: "Ready To Run",
+          body: "Drive is already healthy, so the card compresses the workflow down to a clear run action.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Gamepad",
+          power: "84% / 18ms",
+          modeLabel: "Workflow Guided",
+          mode: "Drive",
+          steps: ["done", "na", "na", "active"],
+          health: "Bridge ready",
+          model: "Not needed for Drive",
+          target: "Not needed for Drive",
+          run: "Ready to start",
+          cta: ["Start", ""],
+          note: "This shows the best case for the workflow card: the user barely has to think because the next action is already singular.",
+          targetOverlay: false,
+          faultTone: false
+        },
+        drive_active: {
+          eyebrow: "Step 4 of 4",
+          headline: "Drive Running",
+          body: "While active, the card becomes a safety surface. The workflow is complete, so the only dominant action is stopping.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Gamepad",
+          power: "84% / 13ms",
+          modeLabel: "Workflow Guided",
+          mode: "Drive",
+          steps: ["done", "na", "na", "active"],
+          health: "Bridge ready",
+          model: "Not needed for Drive",
+          target: "Not needed for Drive",
+          run: "Active",
+          cta: ["Stop", "stop"],
+          note: "A good comparison case for whether the workflow card makes active robot states feel calmer and safer.",
+          targetOverlay: false,
+          faultTone: false
+        },
+        auto_missing: {
+          eyebrow: "Step 2 of 4",
+          headline: "Load A Compatible Model",
+          body: "Auto is selected, but the workflow card stages the missing prerequisite explicitly instead of leaving it buried inside settings.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: None",
+          power: "84% / 24ms",
+          modeLabel: "Workflow Guided",
+          mode: "Auto",
+          steps: ["done", "active", "na", "blocked"],
+          health: "Bridge ready",
+          model: "Missing",
+          target: "Not needed for Auto",
+          run: "Blocked by model",
+          cta: ["Load Model", "warn"],
+          note: "This scenario checks whether model import feels clearer when the UI treats it as the explicit second step of the task.",
+          targetOverlay: false,
+          faultTone: false
+        },
+        auto_ready: {
+          eyebrow: "Step 4 of 4",
+          headline: "Auto Can Start",
+          body: "A valid model is present, so the workflow collapses back to a simple execution step with no extra mode clutter.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: None",
+          power: "84% / 27ms",
+          modeLabel: "Workflow Guided",
+          mode: "Auto",
+          steps: ["done", "done", "na", "active"],
+          health: "Bridge ready",
+          model: "Compatible model ready",
+          target: "Not needed for Auto",
+          run: "Ready to start",
+          cta: ["Start Auto", ""],
+          note: "Useful for judging whether staged guidance still feels efficient after prerequisites have already been satisfied.",
+          targetOverlay: false,
+          faultTone: false
+        },
+        track_target: {
+          eyebrow: "Step 3 of 4",
+          headline: "Select Tracking Target",
+          body: "Track is almost ready. The workflow card turns target selection into the only remaining task and lets the camera surface support it directly.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Remote Phone",
+          power: "84% / 42ms",
+          modeLabel: "Workflow Guided",
+          mode: "Track",
+          steps: ["done", "done", "active", "blocked"],
+          health: "Bridge ready",
+          model: "Track model ready",
+          target: "Waiting for target",
+          run: "Blocked by target",
+          cta: ["Select Target", "warn"],
+          note: "This is the strongest case for the workflow-card approach because Track naturally behaves like a staged task.",
+          targetOverlay: true,
+          faultTone: false
+        },
+        fault: {
+          eyebrow: "Recovery State",
+          headline: "Recover Before Continuing",
+          body: "A fault interrupts the workflow entirely. The card stops pretending the user is still in a normal mode flow and focuses on recovery.",
+          bridge: ["Bridge Lost", "bad"],
+          owner: "Owner: None",
+          power: "84% / --",
+          modeLabel: "Recovery Guided",
+          mode: "Drive",
+          steps: ["blocked", "blocked", "blocked", "blocked"],
+          health: "Bridge offline",
+          model: "Unavailable",
+          target: "Unavailable",
+          run: "Stopped for safety",
+          cta: ["Recover", "warn"],
+          note: "Useful for checking whether the workflow card becomes too heavy in fault states or actually improves recovery clarity.",
+          targetOverlay: false,
+          faultTone: true
+        }
+      };
+
+      const buttons = Array.from(document.querySelectorAll("[data-scenario]"));
+      const bridgePill = document.getElementById("bridgePill");
+      const ownerPill = document.getElementById("ownerPill");
+      const powerPill = document.getElementById("powerPill");
+      const modeMarker = document.getElementById("modeMarker");
+      const workflowCard = document.getElementById("workflowCard");
+      const cardEyebrow = document.getElementById("cardEyebrow");
+      const headline = document.getElementById("headline");
+      const modeBadge = document.getElementById("modeBadge");
+      const bodyCopy = document.getElementById("bodyCopy");
+      const healthValue = document.getElementById("healthValue");
+      const modelValue = document.getElementById("modelValue");
+      const targetValue = document.getElementById("targetValue");
+      const runValue = document.getElementById("runValue");
+      const ctaButton = document.getElementById("ctaButton");
+      const footerNote = document.getElementById("footerNote");
+      const targetBox = document.getElementById("targetBox");
+      const modeDrive = document.getElementById("modeDrive");
+      const modeAuto = document.getElementById("modeAuto");
+      const modeTrack = document.getElementById("modeTrack");
+      const stepHealth = document.getElementById("stepHealth");
+      const stepModel = document.getElementById("stepModel");
+      const stepTarget = document.getElementById("stepTarget");
+      const stepRun = document.getElementById("stepRun");
+
+      function setPillTone(element, tone) {
+        element.classList.remove("good", "warn", "bad");
+        if (tone) {
+          element.classList.add(tone);
+        }
+      }
+
+      function setStepState(element, state) {
+        element.className = "step";
+        if (state) {
+          element.classList.add(state);
+        }
+      }
+
+      function setModeState(mode) {
+        modeDrive.classList.toggle("active", mode === "Drive");
+        modeAuto.classList.toggle("active", mode === "Auto");
+        modeTrack.classList.toggle("active", mode === "Track");
+      }
+
+      function setScenario(name) {
+        const scenario = scenarios[name];
+        if (!scenario) {
+          return;
+        }
+
+        buttons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.scenario === name);
+        });
+
+        bridgePill.textContent = scenario.bridge[0];
+        setPillTone(bridgePill, scenario.bridge[1]);
+        ownerPill.textContent = scenario.owner;
+        powerPill.textContent = scenario.power;
+        modeMarker.textContent = scenario.modeLabel;
+
+        workflowCard.classList.toggle("fault", scenario.faultTone);
+        cardEyebrow.textContent = scenario.eyebrow;
+        headline.textContent = scenario.headline;
+        modeBadge.textContent = scenario.mode;
+        setModeState(scenario.mode);
+
+        setStepState(stepHealth, scenario.steps[0]);
+        setStepState(stepModel, scenario.steps[1]);
+        setStepState(stepTarget, scenario.steps[2]);
+        setStepState(stepRun, scenario.steps[3]);
+
+        bodyCopy.textContent = scenario.body;
+        healthValue.textContent = scenario.health;
+        modelValue.textContent = scenario.model;
+        targetValue.textContent = scenario.target;
+        runValue.textContent = scenario.run;
+
+        ctaButton.textContent = scenario.cta[0];
+        ctaButton.className = "cta";
+        if (scenario.cta[1]) {
+          ctaButton.classList.add(scenario.cta[1]);
+        }
+
+        footerNote.textContent = scenario.note;
+        targetBox.classList.toggle("active", scenario.targetOverlay);
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => setScenario(button.dataset.scenario));
+      });
+
+      setScenario("drive_idle");
+    </script>
+  </body>
+</html>

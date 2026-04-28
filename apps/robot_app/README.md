@@ -1,6 +1,6 @@
 # Robot App
 
-`robot_app` is the robot-side Flutter UI. It currently follows a camera-first flow with setup, connection state, and robot-facing telemetry scaffolding.
+`robot_app` is the standalone robot-side Flutter UI. It remains independently runnable even though the merged one-phone direction now lives in `control_app` through `FusionApp`.
 
 ## Active Entry Path
 
@@ -37,6 +37,7 @@ robot_app/
 - camera-first robot UI
 - drive / auto / track mode scaffolding
 - telemetry and robot state presentation
+- staying runnable as a separate robot-side app while shared logic is clarified
 
 ## Collaboration Guide
 
@@ -53,4 +54,3 @@ flutter run
 ```
 
 For repo-wide context, read `../../docs/architecture.md`.
-

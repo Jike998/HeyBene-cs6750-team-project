@@ -1,16 +1,16 @@
 # robot_shell Archive
 
-This is an archived robot-side scaffold that previously lived directly inside `control_app`.
+This is a robot-side scaffold that previously lived directly inside `control_app`.
 
 It is kept here so the repository structure matches the current project reality:
 
-- `control_app` active path: controller-side UI
-- `robot_app` active path: robot-side UI
-- `legacy/robot_shell`: old embedded robot-side experiment preserved as reference only
+- `control_app` active path: merged one-phone runtime through `FusionApp`
+- `robot_app` active path: standalone robot-side UI
+- `legacy/robot_shell`: temporary host-role dependency still used by `FusionApp`
 
-## Do Not Use As Mainline
+## Transitional Status
 
-Do not build new team-project features on top of this archive path.
+Do not treat this folder as the long-term home for new shared architecture.
 
 If something here is still useful, extract it carefully into:
 
@@ -19,3 +19,7 @@ If something here is still useful, extract it carefully into:
 - `packages/openbene_bridge`
 - `packages/mock_services`
 
+Short-term note:
+
+- if the current `FusionApp` host role needs a bug fix or a careful update, this path may still need targeted edits
+- avoid casually growing this folder when the same logic can be promoted or extracted instead

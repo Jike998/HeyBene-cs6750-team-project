@@ -19,6 +19,9 @@ class OpenBeneRobotConnectionAdapter implements RobotConnectionService {
   Stream<Map<String, dynamic>>? get sensorStream => _usbBridge.sensorStream;
 
   @override
+  Stream<bool> get connectionStateStream => _usbBridge.connectionStateStream;
+
+  @override
   Future<void> initialize() async {
     usbConnected = false;
     bleConnected = false;

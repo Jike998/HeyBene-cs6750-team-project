@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>OpenBot Controller V4 · One-Handed Casual</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        touch-action: none;
+        background: radial-gradient(circle at 50% 20%, #111827, #020617 58%);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      .stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 1rem;
+      }
+
+      .device {
+        position: relative;
+        width: min(420px, 94vw);
+        aspect-ratio: 9 / 19.5;
+        border-radius: 2.6rem;
+        background: #0f172a;
+        box-shadow: 0 30px 80px rgba(2, 6, 23, 0.52);
+        overflow: hidden;
+        border: 10px solid rgba(255,255,255,0.08);
+      }
+
+      .device::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+        pointer-events: none;
+      }
+
+      .glass {
+        background: rgba(15, 23, 42, 0.44);
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 18px 50px rgba(2, 6, 23, 0.34), inset 0 1px 0 rgba(255,255,255,0.08);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+      }
+
+      .video-panel {
+        position: relative;
+        height: 50%;
+        overflow: hidden;
+        border-radius: 0 0 2rem 2rem;
+      }
+
+      .video-feed {
+        position: absolute;
+        inset: -3%;
+        width: 106%;
+        height: 106%;
+        object-fit: cover;
+        transform: scale(1.03);
+        filter: saturate(0.92) brightness(0.72) contrast(1.04);
+      }
+
+      .video-panel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(255,255,255,0.12), transparent 24%),
+          linear-gradient(180deg, rgba(2,6,23,0.18), rgba(2,6,23,0.56));
+        pointer-events: none;
+      }
+
+      .pad-shell {
+        position: relative;
+        height: 50%;
+        background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+        border-top-left-radius: 2.4rem;
+        border-top-right-radius: 2.4rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
+        overflow: hidden;
+      }
+
+      .pad-shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 28%, rgba(148,163,184,0.16), transparent 28%),
+          linear-gradient(180deg, rgba(255,255,255,0.18), transparent 24%);
+        pointer-events: none;
+      }
+
+      .touch-deck {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 44px;
+        bottom: 18px;
+        border-radius: 2rem;
+        background:
+          radial-gradient(circle at 50% 35%, rgba(255,255,255,0.72), rgba(255,255,255,0) 34%),
+          linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.14));
+        border: 1px solid rgba(148,163,184,0.14);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -8px 24px rgba(148,163,184,0.08), 0 22px 54px rgba(148,163,184,0.12);
+      }
+
+      .touch-deck::before {
+        content: "";
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        top: 18%;
+        height: 1px;
+        background: rgba(148,163,184,0.16);
+      }
+
+      .deck-title {
+        position: absolute;
+        left: 50%;
+        top: 14px;
+        transform: translateX(-50%);
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.24em;
+        color: rgba(100,116,139,0.78);
+      }
+
+      .accelerate-label {
+        position: absolute;
+        left: 50%;
+        top: 32px;
+        transform: translateX(-50%);
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: rgba(148,163,184,0.78);
+      }
+
+      .left-hint,
+      .right-hint {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: rgba(100,116,139,0.72);
+      }
+
+      .left-hint { left: 18px; }
+      .right-hint { right: 18px; }
+
+      .bottom-label {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: rgba(100,116,139,0.9);
+      }
+
+      .touch-pad {
+        position: absolute;
+        inset: 54px 18px 42px;
+        touch-action: none;
+      }
+
+      .guideline-x,
+      .guideline-y {
+        position: absolute;
+        background: rgba(148,163,184,0.16);
+        pointer-events: none;
+      }
+
+      .guideline-x {
+        left: 14%;
+        right: 14%;
+        top: 50%;
+        height: 1px;
+        transform: translateY(-50%);
+      }
+
+      .guideline-y {
+        top: 14%;
+        bottom: 14%;
+        left: 50%;
+        width: 1px;
+        transform: translateX(-50%);
+      }
+
+      .thumb-indicator {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 86px;
+        height: 86px;
+        border-radius: 999px;
+        transform: translate(-50%, -50%);
+        background: linear-gradient(180deg, rgba(51,65,85,0.98), rgba(30,41,59,1));
+        box-shadow: 0 20px 42px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08);
+        transition: transform 90ms linear;
+      }
+
+      .thumb-indicator.returning {
+        transition: transform 180ms cubic-bezier(.2,.9,.2,1);
+      }
+
+      .thumb-glow {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 170px;
+        height: 170px;
+        border-radius: 999px;
+        transform: translate(-50%, -50%);
+        background: radial-gradient(circle, rgba(100,116,139,0.18), transparent 72%);
+        pointer-events: none;
+      }
+
+      .action-chip {
+        background: rgba(255,255,255,0.92);
+        border: 1px solid rgba(148,163,184,0.18);
+        box-shadow: 0 10px 26px rgba(148,163,184,0.12);
+        color: #334155;
+      }
+
+      .tracking-toggle[data-on='true'] {
+        background: linear-gradient(135deg, rgba(101, 163, 13, 0.95), rgba(34, 197, 94, 0.95));
+        border-color: rgba(134,239,172,0.26);
+        color: white;
+      }
+
+      .tracking-toggle[data-on='false'] {
+        background: rgba(15, 23, 42, 0.52);
+        color: rgba(255,255,255,0.94);
+      }
+
+      .version-badge {
+        border: 1px solid rgba(251, 191, 36, 0.25);
+        background: rgba(245, 158, 11, 0.14);
+        color: rgba(255, 251, 235, 0.96);
+      }
+
+      .home-indicator {
+        width: 9rem;
+        height: 0.34rem;
+        border-radius: 999px;
+        background: rgba(15,23,42,0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage text-white">
+      <section class="device">
+        <div class="video-panel">
+          <video class="video-feed" autoplay muted loop playsinline preload="auto">
+            <source src="https://cdn.coverr.co/videos/coverr-driving-on-a-mountain-road-1560673445668?download=1080p" type="video/mp4" />
+          </video>
+
+          <div class="absolute inset-x-0 top-0 z-20 px-4 pt-[max(0.9rem,env(safe-area-inset-top))]">
+            <div class="relative flex items-center justify-between gap-3">
+              <div class="glass rounded-full px-4 py-2.5 text-sm font-medium text-white/92 shadow-lg">
+                Battery 85%
+              </div>
+
+              <div class="absolute left-1/2 top-full mt-2 -translate-x-1/2 rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.22em] version-badge">
+                V4.0 PORTRAIT DEVICE FRAME
+              </div>
+
+              <button id="trackingToggle" type="button" data-on="false" class="tracking-toggle glass rounded-full px-5 py-3 text-base font-semibold tracking-wide shadow-lg">
+                Auto Tracking: OFF
+              </button>
+            </div>
+          </div>
+
+          <div class="absolute inset-0 z-10 flex items-center justify-center px-6">
+            <div class="text-center">
+              <div class="text-4xl font-semibold tracking-tight text-white/16">Live Camera Feed</div>
+              <div class="mt-3 text-xs uppercase tracking-[0.35em] text-white/24">One-Handed Portrait Control</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pad-shell text-slate-700">
+          <div class="absolute inset-x-0 top-0 z-20 flex justify-center pt-4">
+            <div id="actionText" class="action-chip rounded-full px-5 py-2.5 text-sm font-semibold tracking-wide">
+              Ready
+            </div>
+          </div>
+
+          <div class="touch-deck">
+            <div class="deck-title">Swipe Pad</div>
+            <div class="accelerate-label">Accelerate</div>
+            <div class="left-hint">Left</div>
+            <div class="right-hint">Right</div>
+            <div class="bottom-label">Thumb Control Area</div>
+
+            <div id="padZone" class="touch-pad">
+              <div class="guideline-x"></div>
+              <div class="guideline-y"></div>
+              <div class="thumb-glow"></div>
+              <div id="thumbIndicator" class="thumb-indicator"></div>
+            </div>
+          </div>
+
+          <div class="absolute inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 flex justify-center">
+            <div class="home-indicator"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        autoTracking: false,
+        active: false,
+      };
+
+      const els = {
+        trackingToggle: document.getElementById('trackingToggle'),
+        padZone: document.getElementById('padZone'),
+        thumbIndicator: document.getElementById('thumbIndicator'),
+        actionText: document.getElementById('actionText'),
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function renderTracking() {
+        els.trackingToggle.dataset.on = String(state.autoTracking);
+        els.trackingToggle.textContent = state.autoTracking ? 'Auto Tracking: ON' : 'Auto Tracking: OFF';
+      }
+
+      function setThumbPosition(x, y, returning = false) {
+        els.thumbIndicator.classList.toggle('returning', returning);
+        els.thumbIndicator.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+      }
+
+      function updateAction(x, y) {
+        const absX = Math.abs(x);
+        const absY = Math.abs(y);
+        const upStrength = -y;
+
+        if (absX < 10 && absY < 10) {
+          els.actionText.textContent = 'Holding Center';
+          return;
+        }
+
+        if (upStrength > 18 && upStrength >= absX) {
+          const level = Math.round(clamp((upStrength / 126) * 100, 0, 100));
+          els.actionText.textContent = `Accelerating · ${level}%`;
+          return;
+        }
+
+        if (x < -12) {
+          const level = Math.round(clamp((absX / 126) * 100, 0, 100));
+          els.actionText.textContent = `Steering Left · ${level}%`;
+          return;
+        }
+
+        if (x > 12) {
+          const level = Math.round(clamp((absX / 126) * 100, 0, 100));
+          els.actionText.textContent = `Steering Right · ${level}%`;
+          return;
+        }
+
+        if (y > 16) {
+          els.actionText.textContent = 'Braking / Reverse';
+          return;
+        }
+
+        els.actionText.textContent = 'Controlling';
+      }
+
+      function getTouchPoint(event) {
+        const touch = event.changedTouches[0];
+        return touch ? { x: touch.clientX, y: touch.clientY } : null;
+      }
+
+      function moveThumb(clientX, clientY) {
+        const rect = els.padZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dx = clientX - centerX;
+        const dy = clientY - centerY;
+        const radius = Math.min(rect.width, rect.height) / 2 - 42;
+        const distance = Math.hypot(dx, dy);
+        const scale = distance > radius ? radius / distance : 1;
+        const boundedX = dx * scale;
+        const boundedY = dy * scale;
+
+        setThumbPosition(boundedX, boundedY, false);
+        updateAction(boundedX, boundedY);
+      }
+
+      function handleStart(event) {
+        event.preventDefault();
+        const point = getTouchPoint(event);
+        if (!point) return;
+        state.active = true;
+        moveThumb(point.x, point.y);
+      }
+
+      function handleMove(event) {
+        if (!state.active) return;
+        event.preventDefault();
+        const point = getTouchPoint(event);
+        if (!point) return;
+        moveThumb(point.x, point.y);
+      }
+
+      function resetThumb() {
+        state.active = false;
+        setThumbPosition(0, 0, true);
+        els.actionText.textContent = 'Auto-Brake Applied';
+      }
+
+      function handleEnd(event) {
+        if (!state.active) return;
+        event.preventDefault();
+        resetThumb();
+      }
+
+      els.trackingToggle.addEventListener('click', () => {
+        state.autoTracking = !state.autoTracking;
+        renderTracking();
+      });
+
+      els.padZone.addEventListener('touchstart', handleStart, { passive: false });
+      els.padZone.addEventListener('touchmove', handleMove, { passive: false });
+      els.padZone.addEventListener('touchend', handleEnd, { passive: false });
+      els.padZone.addEventListener('touchcancel', handleEnd, { passive: false });
+
+      document.addEventListener('touchmove', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('gesturestart', (event) => event.preventDefault());
+      document.addEventListener('gesturechange', (event) => event.preventDefault());
+      document.addEventListener('gestureend', (event) => event.preventDefault());
+      document.addEventListener('contextmenu', (event) => event.preventDefault());
+
+      renderTracking();
+      setThumbPosition(0, 0, true);
+    </script>
+  </body>
+</html>

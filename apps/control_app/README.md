@@ -1,13 +1,16 @@
 # Control App
 
-`control_app` is the controller-side Flutter UI. It is optimized for landscape use and currently focuses on the gamepad-inspired control interface.
+`control_app` is the current mainline Flutter app. It now hosts the merged `FusionApp` experience while still containing the standalone controller-side flow.
 
 ## Active Entry Path
 
 ```text
 lib/main.dart
-  -> lib/app/control_app.dart
-  -> lib/features/control/presentation/control_screen.dart
+  -> lib/app/fusion_app.dart
+     -> host role
+        -> lib/legacy/robot_shell/...
+     -> controller role
+        -> lib/features/control/presentation/control_screen.dart
 ```
 
 ## Folder Structure
@@ -22,13 +25,16 @@ control_app/
     core/                   # theme, constants, shared UI primitives
     features/
       control/              # active controller UI flow
-    legacy/                 # archived non-mainline scaffold
+      connection/           # emerging shared controller-side domain models
+      telemetry/            # emerging shared controller-side domain models
+    legacy/                 # transitional host-role dependency and older archive code
     services/               # camera, USB, bluetooth, OpenBene adapters
   test/
 ```
 
 ## Current Focus
 
+- one-phone role switching through `FusionApp`
 - landscape controller UI
 - dual-stick and arrow-throttle layouts
 - camera preview when available
@@ -42,8 +48,9 @@ control_app/
 
 ## Notes
 
-- archived robot-side experiments now live under `lib/legacy/robot_shell`
-- the active team-project entry path is the control flow listed above
+- `lib/main.dart` currently launches `FusionApp`
+- `lib/legacy/robot_shell` is still used by the host role as a temporary active dependency
+- new shared logic should prefer active paths or shared packages over deeper coupling to `lib/legacy/robot_shell`
 - for repo-wide context, read `../../docs/architecture.md` and `../../CONTRIBUTING.md`
 
 ## Run

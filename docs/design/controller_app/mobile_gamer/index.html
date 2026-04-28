@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>HCI Mobile Robot Controller</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f131a;
+        --panel: rgba(15, 23, 42, 0.34);
+        --panel-strong: rgba(15, 23, 42, 0.5);
+        --border: rgba(255, 255, 255, 0.14);
+        --text: rgba(248, 250, 252, 0.96);
+        --muted: rgba(226, 232, 240, 0.66);
+        --accent: #4ade80;
+        --danger: #fb7185;
+        --safe-top: max(14px, env(safe-area-inset-top));
+        --safe-right: max(14px, env(safe-area-inset-right));
+        --safe-bottom: max(14px, env(safe-area-inset-bottom));
+        --safe-left: max(14px, env(safe-area-inset-left));
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+        touch-action: none;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .app {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        height: 100svh;
+        overflow: hidden;
+        background: #0f131a;
+      }
+
+      .camera-feed {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 22% 20%, rgba(56, 189, 248, 0.14), transparent 24%),
+          radial-gradient(circle at 78% 18%, rgba(74, 222, 128, 0.12), transparent 22%),
+          radial-gradient(circle at 50% 65%, rgba(148, 163, 184, 0.08), transparent 38%),
+          linear-gradient(180deg, #1b232e 0%, #111827 54%, #0b1220 100%);
+      }
+
+      .camera-feed::before {
+        content: "";
+        position: absolute;
+        inset: 4.5vmin;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+          repeating-linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.026) 0 2px,
+            transparent 2px 7px
+          );
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          inset 0 -32px 72px rgba(2, 6, 23, 0.32),
+          0 36px 120px rgba(2, 6, 23, 0.46);
+      }
+
+      .camera-feed::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(2, 6, 23, 0.08), rgba(2, 6, 23, 0.14) 32%, rgba(2, 6, 23, 0.48)),
+          radial-gradient(circle at 50% 50%, transparent 38%, rgba(2, 6, 23, 0.3) 100%);
+      }
+
+      .glass {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        box-shadow:
+          0 20px 60px rgba(2, 6, 23, 0.28),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+
+      .glass-strong {
+        background: var(--panel-strong);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow:
+          0 24px 70px rgba(2, 6, 23, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+      }
+
+      .status-bar {
+        position: absolute;
+        inset: 0 0 auto 0;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+        pointer-events: none;
+      }
+
+      .status-card {
+        min-width: clamp(150px, 23vw, 240px);
+        padding: 12px 14px;
+        border-radius: 22px;
+      }
+
+      .status-card.right {
+        justify-self: end;
+        text-align: right;
+      }
+
+      .status-label {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .battery-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .battery-shell {
+        position: relative;
+        flex: 1;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .battery-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 78%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #38bdf8 0%, #4ade80 100%);
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.24);
+      }
+
+      .battery-cap {
+        width: 9px;
+        height: 8px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.34);
+      }
+
+      .battery-value {
+        min-width: 44px;
+        text-align: right;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .mode-switch {
+        --toggle-width: clamp(250px, 34vw, 360px);
+        pointer-events: auto;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--toggle-width);
+        height: 66px;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.5);
+        color: var(--text);
+        box-shadow:
+          0 24px 64px rgba(2, 6, 23, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .mode-switch[data-mode="auto"] {
+        background: linear-gradient(180deg, rgba(22, 101, 52, 0.54), rgba(21, 128, 61, 0.34));
+        border-color: rgba(134, 239, 172, 0.34);
+        box-shadow:
+          0 0 0 1px rgba(134, 239, 172, 0.08),
+          0 24px 64px rgba(21, 128, 61, 0.28),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+
+      .mode-thumb {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        width: 54px;
+        height: 54px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(226, 232, 240, 0.92));
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.28);
+        transition: transform 220ms ease, background 220ms ease, box-shadow 220ms ease;
+      }
+
+      .mode-switch[data-mode="auto"] .mode-thumb {
+        transform: translateX(calc(var(--toggle-width) - 66px));
+        background: linear-gradient(180deg, #bbf7d0, #4ade80);
+        box-shadow: 0 0 24px rgba(74, 222, 128, 0.34);
+      }
+
+      .mode-copy {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 18px;
+        font-size: clamp(12px, 1.8vw, 16px);
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .mode-divider {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .connection-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .link-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(248, 250, 252, 0.9);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .link-chip svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 14px rgba(74, 222, 128, 0.64);
+      }
+
+      .left-surface {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 50%;
+        z-index: 10;
+      }
+
+      .steering-tag,
+      .speed-tag {
+        position: absolute;
+        z-index: 20;
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        pointer-events: none;
+      }
+
+      .steering-tag {
+        left: var(--safe-left);
+        bottom: calc(var(--safe-bottom) + 12px);
+      }
+
+      .speed-tag {
+        right: calc(var(--safe-right) + 14px);
+        bottom: calc(var(--safe-bottom) + 190px);
+      }
+
+      .joystick {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 182px;
+        height: 182px;
+        margin-left: -91px;
+        margin-top: -91px;
+        display: none;
+        pointer-events: none;
+        z-index: 16;
+      }
+
+      .joystick.active {
+        display: block;
+      }
+
+      .joystick-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 50%, rgba(15, 23, 42, 0.22) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.12),
+          inset 0 -20px 42px rgba(2, 6, 23, 0.24),
+          0 22px 44px rgba(2, 6, 23, 0.32);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+      }
+
+      .joystick-ring::before,
+      .joystick-ring::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        transform: translate(-50%, -50%);
+      }
+
+      .joystick-ring::before {
+        width: 1px;
+        height: 120px;
+      }
+
+      .joystick-ring::after {
+        width: 120px;
+        height: 1px;
+      }
+
+      .joystick-knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 72px;
+        height: 72px;
+        margin-left: -36px;
+        margin-top: -36px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.42) 42%, rgba(100, 116, 139, 0.24) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.32);
+        transform: translate(0px, 0px);
+      }
+
+      .right-controls {
+        position: absolute;
+        right: var(--safe-right);
+        bottom: var(--safe-bottom);
+        z-index: 24;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 12px;
+      }
+
+      .control-panel {
+        padding: 16px;
+        border-radius: 28px;
+      }
+
+      .button-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .control-button {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: clamp(138px, 20vw, 192px);
+        height: clamp(62px, 11.5vh, 84px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow:
+          0 18px 36px rgba(2, 6, 23, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        font-size: clamp(16px, 2.3vw, 22px);
+        font-weight: 900;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+        touch-action: none;
+      }
+
+      .control-button.is-pressed {
+        transform: scale(0.97);
+      }
+
+      .control-button::after {
+        content: "";
+        position: absolute;
+        inset: 16%;
+        border-radius: inherit;
+        opacity: 0;
+        background: rgba(255, 255, 255, 0.14);
+        transition: opacity 140ms ease;
+      }
+
+      .control-button.is-pressed::after {
+        opacity: 1;
+      }
+
+      .gas-button {
+        background: linear-gradient(180deg, rgba(31, 41, 55, 0.8), rgba(15, 23, 42, 0.94));
+      }
+
+      .gas-button.is-pressed {
+        background: linear-gradient(180deg, rgba(74, 222, 128, 0.94), rgba(22, 163, 74, 0.98));
+        box-shadow:
+          0 0 0 1px rgba(134, 239, 172, 0.14),
+          0 20px 40px rgba(20, 83, 45, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      }
+
+      .brake-button {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 232, 240, 0.92));
+        color: #0f172a;
+      }
+
+      .brake-button.is-pressed {
+        background: linear-gradient(180deg, rgba(251, 113, 133, 0.96), rgba(225, 29, 72, 0.98));
+        color: #ffffff;
+        box-shadow:
+          0 0 0 1px rgba(251, 113, 133, 0.16),
+          0 20px 40px rgba(136, 19, 55, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      }
+
+      .drive-pill {
+        position: absolute;
+        left: 50%;
+        bottom: var(--safe-bottom);
+        z-index: 18;
+        transform: translateX(-50%);
+        padding: 12px 18px;
+        border-radius: 999px;
+        pointer-events: none;
+      }
+
+      .drive-text {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(248, 250, 252, 0.84);
+        white-space: nowrap;
+      }
+
+      .rotate-notice {
+        display: none;
+      }
+
+      @media (max-height: 500px) {
+        .status-card {
+          padding: 10px 12px;
+        }
+
+        .mode-switch {
+          height: 60px;
+        }
+
+        .mode-thumb {
+          width: 48px;
+          height: 48px;
+        }
+
+        .mode-switch[data-mode="auto"] .mode-thumb {
+          transform: translateX(calc(var(--toggle-width) - 60px));
+        }
+
+        .joystick {
+          width: 166px;
+          height: 166px;
+          margin-left: -83px;
+          margin-top: -83px;
+        }
+
+        .joystick-knob {
+          width: 64px;
+          height: 64px;
+          margin-left: -32px;
+          margin-top: -32px;
+        }
+
+        .speed-tag {
+          bottom: calc(var(--safe-bottom) + 174px);
+        }
+      }
+
+      @media (max-width: 760px) {
+        .status-bar {
+          gap: 8px;
+        }
+
+        .status-card {
+          min-width: 128px;
+        }
+
+        .mode-switch {
+          --toggle-width: clamp(214px, 38vw, 280px);
+        }
+
+        .mode-copy {
+          gap: 8px;
+          padding: 0 14px;
+          letter-spacing: 0.08em;
+        }
+
+        .link-chip {
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+      }
+
+      @media (orientation: portrait) {
+        .app-shell {
+          filter: blur(10px);
+          transform: scale(1.03);
+        }
+
+        .rotate-notice {
+          position: absolute;
+          inset: 0;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(2, 6, 23, 0.72);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+
+        .rotate-card {
+          max-width: 320px;
+          padding: 28px;
+          border-radius: 28px;
+          text-align: center;
+        }
+
+        .rotate-title {
+          margin: 0;
+          font-size: 30px;
+          font-weight: 800;
+        }
+
+        .rotate-copy {
+          margin: 12px 0 0;
+          line-height: 1.6;
+          color: rgba(226, 232, 240, 0.72);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <div class="camera-feed"></div>
+
+      <div class="app-shell">
+        <section class="status-bar">
+          <div class="status-card glass">
+            <span class="status-label">Battery</span>
+            <div class="battery-row">
+              <div class="battery-shell">
+                <div id="batteryFill" class="battery-fill"></div>
+              </div>
+              <div class="battery-cap"></div>
+              <div id="batteryValue" class="battery-value">78%</div>
+            </div>
+          </div>
+
+          <button id="modeSwitch" class="mode-switch" type="button" data-mode="manual" aria-pressed="false">
+            <span class="mode-thumb"></span>
+            <span class="mode-copy">
+              <span>Manual</span>
+              <span class="mode-divider"></span>
+              <span>Auto Tracking</span>
+            </span>
+          </button>
+
+          <div class="status-card glass right">
+            <span class="status-label">Connection</span>
+            <div class="connection-row">
+              <div class="link-chip">
+                <span class="status-dot"></span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 7l10 10"></path>
+                  <path d="M7 17L17 7"></path>
+                  <path d="M12 2v20"></path>
+                </svg>
+                <span>BT</span>
+              </div>
+              <div class="link-chip">
+                <span class="status-dot"></span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 8h10"></path>
+                  <path d="M7 16h10"></path>
+                  <path d="M9 8v8"></path>
+                  <path d="M15 8v8"></path>
+                  <path d="M12 3v5"></path>
+                  <path d="M12 16v5"></path>
+                </svg>
+                <span>USB</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div id="leftSurface" class="left-surface" aria-label="Steering surface"></div>
+        <div class="steering-tag glass">Steering</div>
+
+        <div id="joystick" class="joystick" aria-hidden="true">
+          <div class="joystick-ring"></div>
+          <div id="joystickKnob" class="joystick-knob"></div>
+        </div>
+
+        <section class="right-controls">
+          <div class="speed-tag glass">Speed</div>
+          <div class="control-panel glass-strong">
+            <div class="button-stack">
+              <button id="gasButton" class="control-button gas-button" type="button">Gas</button>
+              <button id="brakeButton" class="control-button brake-button" type="button">Brake</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="drive-pill glass">
+          <div id="driveText" class="drive-text">Manual • Idle • Steer 0.00</div>
+        </div>
+      </div>
+
+      <section class="rotate-notice">
+        <div class="rotate-card glass-strong">
+          <h1 class="rotate-title">Rotate to Landscape</h1>
+          <p class="rotate-copy">This controller is designed for two-thumb landscape use on a phone.</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        autoMode: false,
+        battery: 78,
+        steerX: 0,
+        steerY: 0,
+        joystickPointerId: null,
+        gasPointers: new Set(),
+        brakePointers: new Set(),
+      };
+
+      const elements = {
+        batteryFill: document.getElementById('batteryFill'),
+        batteryValue: document.getElementById('batteryValue'),
+        modeSwitch: document.getElementById('modeSwitch'),
+        leftSurface: document.getElementById('leftSurface'),
+        joystick: document.getElementById('joystick'),
+        joystickKnob: document.getElementById('joystickKnob'),
+        gasButton: document.getElementById('gasButton'),
+        brakeButton: document.getElementById('brakeButton'),
+        driveText: document.getElementById('driveText'),
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function renderBattery() {
+        const level = clamp(state.battery, 0, 100);
+        elements.batteryFill.style.width = `${level}%`;
+        elements.batteryValue.textContent = `${Math.round(level)}%`;
+      }
+
+      function renderMode() {
+        elements.modeSwitch.dataset.mode = state.autoMode ? 'auto' : 'manual';
+        elements.modeSwitch.setAttribute('aria-pressed', String(state.autoMode));
+      }
+
+      function buttonActive(set, button) {
+        button.classList.toggle('is-pressed', set.size > 0);
+      }
+
+      function renderDriveText() {
+        const mode = state.autoMode ? 'Auto Tracking' : 'Manual';
+        const throttle = state.gasPointers.size > 0 && state.brakePointers.size > 0
+          ? 'Gas + Brake'
+          : state.gasPointers.size > 0
+            ? 'Gas'
+            : state.brakePointers.size > 0
+              ? 'Brake'
+              : 'Idle';
+        const steer = Math.abs(state.steerX) < 0.01 ? 0 : state.steerX;
+        elements.driveText.textContent = `${mode} • ${throttle} • Steer ${steer.toFixed(2)}`;
+      }
+
+      function setJoystickPosition(x, y) {
+        elements.joystick.style.left = `${x}px`;
+        elements.joystick.style.top = `${y}px`;
+      }
+
+      function resetJoystick() {
+        state.steerX = 0;
+        state.steerY = 0;
+        state.joystickPointerId = null;
+        elements.joystick.classList.remove('active');
+        elements.joystickKnob.style.transform = 'translate(0px, 0px)';
+        renderDriveText();
+      }
+
+      function updateJoystick(event) {
+        const joystickRect = elements.joystick.getBoundingClientRect();
+        const centerX = joystickRect.left + joystickRect.width / 2;
+        const centerY = joystickRect.top + joystickRect.height / 2;
+        const radius = joystickRect.width * 0.31;
+        const deltaX = event.clientX - centerX;
+        const deltaY = event.clientY - centerY;
+        const distance = Math.hypot(deltaX, deltaY);
+        const limited = Math.min(distance, radius);
+        const angle = Math.atan2(deltaY, deltaX);
+        const knobX = distance === 0 ? 0 : Math.cos(angle) * limited;
+        const knobY = distance === 0 ? 0 : Math.sin(angle) * limited;
+
+        state.steerX = clamp(knobX / radius, -1, 1);
+        state.steerY = clamp(knobY / radius, -1, 1);
+        elements.joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+        renderDriveText();
+      }
+
+      function startJoystick(event) {
+        if (state.joystickPointerId !== null) {
+          return;
+        }
+
+        if (event.pointerType === 'mouse' && event.button !== 0) {
+          return;
+        }
+
+        if (event.clientX > window.innerWidth / 2) {
+          return;
+        }
+
+        event.preventDefault();
+        state.joystickPointerId = event.pointerId;
+        elements.leftSurface.setPointerCapture(event.pointerId);
+        elements.joystick.classList.add('active');
+        setJoystickPosition(event.clientX, event.clientY);
+        elements.joystickKnob.style.transform = 'translate(0px, 0px)';
+        updateJoystick(event);
+      }
+
+      function moveJoystick(event) {
+        if (event.pointerId !== state.joystickPointerId) {
+          return;
+        }
+
+        event.preventDefault();
+        updateJoystick(event);
+      }
+
+      function endJoystick(event) {
+        if (event.pointerId !== state.joystickPointerId) {
+          return;
+        }
+
+        resetJoystick();
+      }
+
+      function bindControlButton(button, set) {
+        function release(event) {
+          if (set.delete(event.pointerId)) {
+            buttonActive(set, button);
+            renderDriveText();
+          }
+        }
+
+        button.addEventListener('pointerdown', (event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) {
+            return;
+          }
+
+          event.preventDefault();
+          set.add(event.pointerId);
+          button.setPointerCapture(event.pointerId);
+          buttonActive(set, button);
+          renderDriveText();
+        });
+
+        button.addEventListener('pointerup', release);
+        button.addEventListener('pointercancel', release);
+        button.addEventListener('lostpointercapture', release);
+      }
+
+      elements.modeSwitch.addEventListener('click', () => {
+        state.autoMode = !state.autoMode;
+        renderMode();
+        renderDriveText();
+      });
+
+      elements.leftSurface.addEventListener('pointerdown', startJoystick);
+      elements.leftSurface.addEventListener('pointermove', moveJoystick);
+      elements.leftSurface.addEventListener('pointerup', endJoystick);
+      elements.leftSurface.addEventListener('pointercancel', endJoystick);
+      elements.leftSurface.addEventListener('lostpointercapture', endJoystick);
+
+      bindControlButton(elements.gasButton, state.gasPointers);
+      bindControlButton(elements.brakeButton, state.brakePointers);
+
+      document.addEventListener('contextmenu', (event) => event.preventDefault());
+      document.addEventListener('gesturestart', (event) => event.preventDefault());
+      document.addEventListener('gesturechange', (event) => event.preventDefault());
+      document.addEventListener('gestureend', (event) => event.preventDefault());
+
+      renderBattery();
+      renderMode();
+      renderDriveText();
+    </script>
+  </body>
+</html>

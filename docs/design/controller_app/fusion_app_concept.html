@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OpenBot Fusion System UI V4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+        background: #020617;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #020617;
+      }
+
+      .top-glass {
+        background: rgba(15, 23, 42, 0.52);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+
+      .chip[data-active='true'] {
+        background: rgba(255, 255, 255, 0.16);
+        color: white;
+      }
+
+      .chip[data-active='false'] {
+        opacity: 0.62;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 72px 10px 10px;
+      }
+
+      .frame {
+        width: 100%;
+        height: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 22px;
+        overflow: hidden;
+        background: #020617;
+      }
+
+      .frame iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #020617;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 900px) {
+        .top-row {
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+
+        .stage {
+          inset-top: 110px;
+          inset: 110px 8px 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell text-white">
+      <section class="absolute inset-x-0 top-0 z-20 px-3 pt-3 sm:px-4">
+        <div class="top-row top-glass flex items-center justify-between gap-2 rounded-2xl p-2 text-xs sm:text-sm">
+          <div class="top-glass flex items-center gap-1 rounded-full p-1">
+            <button class="chip rounded-full px-3 py-1.5" data-role="host">Host</button>
+            <button class="chip rounded-full px-3 py-1.5" data-role="controller">Controller</button>
+          </div>
+
+          <div class="top-glass flex items-center gap-2 rounded-full px-3 py-1.5">
+            <span id="linkChip" class="rounded-full bg-white/10 px-2.5 py-1">Robot link: stable</span>
+            <span id="inputChip" class="rounded-full bg-white/10 px-2.5 py-1">Input: gamepad first</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="pairButton" data-paired="false" class="top-glass rounded-full px-3 py-1.5">Pair companion</button>
+            <div id="controllerLayoutGroup" class="top-glass hidden items-center gap-1 rounded-full p-1">
+              <button class="chip rounded-full px-3 py-1.5" data-layout="mobile">Mobile Gamer</button>
+              <button class="chip rounded-full px-3 py-1.5" data-layout="onehand">One-Handed</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage">
+        <div id="hostView" class="frame">
+          <iframe src="../robot_app/robot_app_concept.html" title="Robot App Host"></iframe>
+        </div>
+
+        <div id="controllerMobileView" class="frame hidden">
+          <iframe src="mobile_gamer/" title="Controller Mobile Gamer"></iframe>
+        </div>
+
+        <div id="controllerOneHandView" class="frame hidden">
+          <iframe src="one_handed_casual/" title="Controller One-Handed"></iframe>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        role: 'host',
+        layout: 'mobile',
+        preferredInput: 'gamepad',
+        paired: false,
+      };
+
+      const els = {
+        hostView: document.getElementById('hostView'),
+        controllerMobileView: document.getElementById('controllerMobileView'),
+        controllerOneHandView: document.getElementById('controllerOneHandView'),
+        controllerLayoutGroup: document.getElementById('controllerLayoutGroup'),
+        pairButton: document.getElementById('pairButton'),
+        linkChip: document.getElementById('linkChip'),
+        inputChip: document.getElementById('inputChip'),
+      };
+
+      function renderTop() {
+        els.pairButton.dataset.paired = String(state.paired);
+        els.pairButton.textContent = state.paired ? 'Companion paired' : 'Pair companion';
+
+        if (state.role === 'host') {
+          els.linkChip.textContent = 'Robot link: stable';
+        } else {
+          els.linkChip.textContent = state.paired ? 'Host link: stable' : 'Host link: waiting';
+        }
+
+        els.inputChip.textContent = state.preferredInput === 'gamepad'
+          ? 'Input: gamepad first'
+          : 'Input: phone fallback';
+      }
+
+      function renderRole() {
+        document.querySelectorAll('[data-role]').forEach((button) => {
+          button.dataset.active = String(button.dataset.role === state.role);
+        });
+
+        const isHost = state.role === 'host';
+        els.hostView.classList.toggle('hidden', !isHost);
+        els.controllerLayoutGroup.classList.toggle('hidden', isHost);
+        els.controllerLayoutGroup.classList.toggle('flex', !isHost);
+
+        if (!isHost) {
+          renderLayout();
+        } else {
+          els.controllerMobileView.classList.add('hidden');
+          els.controllerOneHandView.classList.add('hidden');
+        }
+
+        renderTop();
+      }
+
+      function renderLayout() {
+        document.querySelectorAll('[data-layout]').forEach((button) => {
+          button.dataset.active = String(button.dataset.layout === state.layout);
+        });
+
+        if (state.role !== 'controller') return;
+
+        els.controllerMobileView.classList.toggle('hidden', state.layout !== 'mobile');
+        els.controllerOneHandView.classList.toggle('hidden', state.layout !== 'onehand');
+      }
+
+      document.querySelectorAll('[data-role]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.role = button.dataset.role;
+          renderRole();
+        });
+      });
+
+      document.querySelectorAll('[data-layout]').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.layout = button.dataset.layout;
+          renderLayout();
+        });
+      });
+
+      els.pairButton.addEventListener('click', () => {
+        state.paired = !state.paired;
+        renderTop();
+      });
+
+      // Keep a simple source-of-input indicator in the shell.
+      window.addEventListener('keydown', (event) => {
+        if (event.key.toLowerCase() === 'g') {
+          state.preferredInput = 'gamepad';
+          renderTop();
+        }
+        if (event.key.toLowerCase() === 'p') {
+          state.preferredInput = 'phone';
+          renderTop();
+        }
+      });
+
+      renderRole();
+      renderLayout();
+      renderTop();
+    </script>
+  </body>
+</html>

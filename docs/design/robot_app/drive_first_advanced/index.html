@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Robot Runtime Demo - Drive First + Advanced Entry</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08111d;
+        --panel: #0f172a;
+        --panel-soft: rgba(15, 23, 42, 0.78);
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #fb7185;
+        --accent: #38bdf8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 28%),
+          linear-gradient(180deg, #07101a, #0b1322 62%, #0c1728);
+        color: var(--text);
+        font-family: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .layout {
+        display: flex;
+        gap: 28px;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 28px;
+        flex-wrap: wrap;
+      }
+
+      .phone {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        overflow: hidden;
+        border-radius: 36px;
+        background: #050913;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.45);
+      }
+
+      .feed {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 72% 28%, rgba(56, 189, 248, 0.18), transparent 30%),
+          linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(8, 15, 30, 0.16), rgba(8, 15, 30, 0.54)),
+          radial-gradient(circle at center, rgba(148, 163, 184, 0.15), rgba(15, 23, 42, 0.94));
+        background-size: auto, 26px 26px, 26px 26px, auto, auto;
+      }
+
+      .feed::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(2, 6, 23, 0.28), transparent 18%, transparent 78%, rgba(2, 6, 23, 0.82)),
+          radial-gradient(circle at center, transparent 0%, transparent 54%, rgba(2, 6, 23, 0.36) 100%);
+      }
+
+      .target-ring {
+        position: absolute;
+        left: 50%;
+        top: 45%;
+        width: 150px;
+        height: 150px;
+        margin-left: -75px;
+        margin-top: -75px;
+        border-radius: 28px;
+        border: 2px solid rgba(255, 255, 255, 0.82);
+        box-shadow: 0 0 0 12px rgba(15, 23, 42, 0.16);
+        opacity: 0;
+        transform: scale(0.92);
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+
+      .target-ring.active {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .glass {
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+        backdrop-filter: blur(18px);
+      }
+
+      .top {
+        position: absolute;
+        inset: 0 0 auto 0;
+        padding: 18px 16px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .health {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 22px;
+      }
+
+      .health-left,
+      .health-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .pill.good {
+        color: #d1fae5;
+        border-color: rgba(52, 211, 153, 0.24);
+        background: rgba(16, 185, 129, 0.12);
+      }
+
+      .pill.warn {
+        color: #fef3c7;
+        border-color: rgba(251, 191, 36, 0.24);
+        background: rgba(245, 158, 11, 0.12);
+      }
+
+      .pill.bad {
+        color: #ffe4e6;
+        border-color: rgba(251, 113, 133, 0.24);
+        background: rgba(244, 63, 94, 0.12);
+      }
+
+      .focus-bar {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 24px;
+      }
+
+      .drive-focus,
+      .advanced-entry {
+        min-height: 88px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .drive-focus {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .focus-title {
+        font-size: 22px;
+        font-weight: 800;
+      }
+
+      .focus-copy {
+        font-size: 13px;
+        color: #dbe4ef;
+        line-height: 1.45;
+      }
+
+      .advanced-entry {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .entry-button {
+        min-height: 42px;
+        border-radius: 16px;
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        background: rgba(56, 189, 248, 0.14);
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .entry-button.disabled {
+        border-color: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.05);
+        color: #cbd5e1;
+      }
+
+      .entry-caption {
+        font-size: 12px;
+        color: #d1d5db;
+        line-height: 1.45;
+      }
+
+      .center-copy {
+        position: absolute;
+        left: 22px;
+        right: 22px;
+        top: 196px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .status-card {
+        max-width: 252px;
+        padding: 14px 16px;
+        border-radius: 20px;
+      }
+
+      .status-card h2 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+
+      .status-card p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #d1d5db;
+      }
+
+      .mode-drawer {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 172px;
+        padding: 14px;
+        border-radius: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        transform-origin: bottom center;
+        transition: transform 180ms ease, opacity 180ms ease;
+      }
+
+      .mode-drawer.collapsed {
+        opacity: 0.76;
+        transform: translateY(36px) scale(0.97);
+      }
+
+      .mode-drawer.open {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+
+      .drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .drawer-head strong {
+        font-size: 15px;
+      }
+
+      .drawer-head span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .drawer-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .advanced-chip {
+        min-height: 74px;
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        color: #dbe4ef;
+      }
+
+      .advanced-chip small {
+        color: var(--muted);
+      }
+
+      .advanced-chip.active {
+        border-color: rgba(56, 189, 248, 0.34);
+        background: rgba(56, 189, 248, 0.18);
+      }
+
+      .advanced-chip.blocked {
+        border-style: dashed;
+      }
+
+      .drawer-hint {
+        margin: 0;
+        font-size: 12px;
+        color: #cbd5e1;
+        line-height: 1.45;
+      }
+
+      .bottom {
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: 14px;
+        padding: 14px;
+        border-radius: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .meta-row {
+        display: flex;
+        gap: 10px;
+      }
+
+      .meta {
+        flex: 1;
+        min-height: 72px;
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .meta .k {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .meta .v {
+        margin-top: 8px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .cta {
+        min-height: 64px;
+        border: none;
+        border-radius: 20px;
+        font-size: 17px;
+        font-weight: 800;
+        color: white;
+        background: linear-gradient(180deg, #38bdf8, #0284c7);
+      }
+
+      .cta.stop {
+        background: linear-gradient(180deg, #fb7185, #e11d48);
+      }
+
+      .cta.warn {
+        background: linear-gradient(180deg, #fbbf24, #d97706);
+      }
+
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .panel {
+        width: 360px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      }
+
+      .panel h1,
+      .panel h2,
+      .panel p {
+        margin-top: 0;
+      }
+
+      .scenario-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .scenario-grid button {
+        min-height: 42px;
+        text-align: left;
+        padding: 0 12px;
+        border-radius: 14px;
+        color: white;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .scenario-grid button.active {
+        border-color: rgba(56, 189, 248, 0.42);
+        background: rgba(56, 189, 248, 0.18);
+      }
+
+      .legend {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 10px;
+      }
+
+      .legend-item {
+        font-size: 13px;
+        color: #d1d5db;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <section class="phone">
+        <div class="feed"></div>
+        <div id="targetRing" class="target-ring"></div>
+
+        <div class="top">
+          <div class="health glass">
+            <div class="health-left">
+              <span class="pill">Robot</span>
+              <span id="bridgePill" class="pill good">Bridge Ready</span>
+            </div>
+            <div class="health-right">
+              <span id="ownerPill" class="pill">Owner: None</span>
+              <span id="powerPill" class="pill">84% / 18ms</span>
+            </div>
+          </div>
+
+          <div class="focus-bar glass">
+            <div class="drive-focus">
+              <div class="eyebrow">Default Runtime</div>
+              <div id="focusTitle" class="focus-title">Drive First</div>
+              <div id="focusCopy" class="focus-copy">The base shell keeps Drive as the obvious operating lane. Advanced modes stay one level deeper.</div>
+            </div>
+
+            <div class="advanced-entry">
+              <button id="entryButton" class="entry-button" type="button">Advanced Modes</button>
+              <div id="entryCaption" class="entry-caption">Open Auto and Track only when the user intentionally asks for them.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center-copy">
+          <div class="status-card glass">
+            <h2 id="headline">Drive Standby</h2>
+            <p id="bodyCopy">This structure treats Drive as the home lane and makes Auto / Track feel deliberate instead of constantly top-level.</p>
+          </div>
+        </div>
+
+        <div id="modeDrawer" class="mode-drawer glass collapsed">
+          <div class="drawer-head">
+            <strong>Advanced Modes</strong>
+            <span id="drawerState">Closed by default</span>
+          </div>
+
+          <div class="drawer-grid">
+            <div id="autoOption" class="advanced-chip blocked">
+              <span>Auto</span>
+              <small id="autoStatus">Need model</small>
+            </div>
+            <div id="trackOption" class="advanced-chip blocked">
+              <span>Track</span>
+              <small id="trackStatus">Need model</small>
+            </div>
+          </div>
+
+          <p id="drawerHint" class="drawer-hint">Advanced modes stay out of the primary shell until the user chooses to open them.</p>
+        </div>
+
+        <div class="bottom glass">
+          <div class="meta-row">
+            <div class="meta">
+              <div class="k">Current Mode</div>
+              <div id="modeValue" class="v">Drive</div>
+            </div>
+            <div class="meta">
+              <div class="k">Next Requirement</div>
+              <div id="requirementValue" class="v">None</div>
+            </div>
+          </div>
+
+          <button id="ctaButton" class="cta" type="button">Start</button>
+          <div id="footerNote" class="note">This variant intentionally favors runtime focus over immediate mode discoverability.</div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <h1>Drive First + Advanced Entry</h1>
+        <p>This demo treats `Drive` as the obvious base lane and pushes `Auto` / `Track` behind a secondary entry. It is meant to feel more like a runtime tool than a mode browser.</p>
+
+        <h2>Scenario Switcher</h2>
+        <div class="scenario-grid">
+          <button data-scenario="setup">Setup Needed</button>
+          <button data-scenario="drive_idle">Drive Idle</button>
+          <button data-scenario="drive_active">Drive Active</button>
+          <button data-scenario="auto_missing">Auto Missing Model</button>
+          <button data-scenario="auto_ready">Auto Ready</button>
+          <button data-scenario="track_target">Track Needs Target</button>
+          <button data-scenario="fault">Fault / Recovery</button>
+        </div>
+
+        <div class="legend">
+          <div class="legend-item"><strong>Strength:</strong> the runtime stays focused on the most common robot task first.</div>
+          <div class="legend-item"><strong>Risk:</strong> advanced capability is less discoverable unless the secondary entry feels obvious enough.</div>
+          <div class="legend-item"><strong>Best use:</strong> if we want the Robot side to feel like a disciplined operating surface instead of a feature dashboard.</div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const scenarios = {
+        setup: {
+          headline: "Setup Needed",
+          body: "Drive still owns the shell, but advanced modes stay behind the setup gate until the robot bridge is healthy.",
+          bridge: ["Bridge Missing", "bad"],
+          owner: "Owner: None",
+          power: "84% / --",
+          focusTitle: "Drive First",
+          focusCopy: "The default lane remains clear even when setup blocks normal runtime.",
+          entry: ["Advanced Locked", true],
+          entryCaption: "Finish robot setup before exposing Auto or Track.",
+          mode: "Drive",
+          requirement: "Connect Robot",
+          cta: ["Connect Robot", "warn"],
+          note: "This tests whether the product feels calmer when advanced capability is withheld until the base runtime is healthy.",
+          drawerOpen: false,
+          drawerState: "Hidden behind setup",
+          autoStatus: "Need setup",
+          trackStatus: "Need setup",
+          drawerHint: "Advanced modes stay one level deeper and should not compete with setup recovery.",
+          activeAdvanced: "",
+          target: false
+        },
+        drive_idle: {
+          headline: "Drive Standby",
+          body: "Healthy default runtime. Drive is the main lane, local gamepad owns control, and the next action stays simple.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Gamepad",
+          power: "84% / 18ms",
+          focusTitle: "Drive First",
+          focusCopy: "This shell assumes ordinary operation starts in Drive and stays there most of the time.",
+          entry: ["Advanced Modes", false],
+          entryCaption: "Open Auto and Track only when the user intentionally asks for them.",
+          mode: "Drive",
+          requirement: "None",
+          cta: ["Start", ""],
+          note: "Useful for checking whether the Robot side feels more focused when the default runtime is given visual priority.",
+          drawerOpen: false,
+          drawerState: "Closed by default",
+          autoStatus: "Need model",
+          trackStatus: "Need model",
+          drawerHint: "Advanced modes stay out of the primary shell until the user chooses to open them.",
+          activeAdvanced: "",
+          target: false
+        },
+        drive_active: {
+          headline: "Drive Active",
+          body: "During motion, the shell becomes even more conservative. Switching into advanced modes is visually discouraged until the robot stops.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Gamepad",
+          power: "84% / 13ms",
+          focusTitle: "Drive Active",
+          focusCopy: "Once the robot is moving, the strongest visible action is stopping safely.",
+          entry: ["Advanced Locked", true],
+          entryCaption: "Stop the current run before changing mode or owner.",
+          mode: "Drive",
+          requirement: "Safe stop",
+          cta: ["Stop", "stop"],
+          note: "This scenario checks whether the Drive-first shell reduces the temptation to change modes during active motion.",
+          drawerOpen: false,
+          drawerState: "Suppressed while active",
+          autoStatus: "Need model",
+          trackStatus: "Need model",
+          drawerHint: "Mode switching should feel unavailable while the robot is actively moving.",
+          activeAdvanced: "",
+          target: false
+        },
+        auto_missing: {
+          headline: "Auto Requires Model",
+          body: "The user deliberately opened advanced modes and selected Auto. The shell still centers the next concrete step instead of displaying all modes all the time.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: None",
+          power: "84% / 24ms",
+          focusTitle: "Advanced Entry Open",
+          focusCopy: "Auto is visible now because the user intentionally entered the advanced lane.",
+          entry: ["Advanced Modes", false],
+          entryCaption: "Advanced lane stays secondary even when it is open.",
+          mode: "Auto",
+          requirement: "Valid model",
+          cta: ["Load Model", "warn"],
+          note: "This helps compare whether hiding Auto by default makes the product clearer without making the capability feel buried.",
+          drawerOpen: true,
+          drawerState: "Open by intent",
+          autoStatus: "Need model",
+          trackStatus: "Need model",
+          drawerHint: "Auto becomes a deliberate workflow instead of a permanently visible top-level mode.",
+          activeAdvanced: "auto",
+          target: false
+        },
+        auto_ready: {
+          headline: "Auto Ready",
+          body: "A compatible model is now ready. The advanced drawer can stay open for confidence, but Drive still remains the product's default mental model.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: None",
+          power: "84% / 27ms",
+          focusTitle: "Advanced Entry Open",
+          focusCopy: "Auto is armed through readiness, not through constant top-level visibility.",
+          entry: ["Advanced Modes", false],
+          entryCaption: "The advanced lane is visible only because the user chose to open it.",
+          mode: "Auto",
+          requirement: "Model ready",
+          cta: ["Start Auto", ""],
+          note: "Good for testing whether explicit entry plus clear readiness feels better than a permanently visible mode rail.",
+          drawerOpen: true,
+          drawerState: "Open by intent",
+          autoStatus: "Ready",
+          trackStatus: "Need target",
+          drawerHint: "Auto now has what it needs, while Track still remains staged behind one extra prerequisite.",
+          activeAdvanced: "auto",
+          target: false
+        },
+        track_target: {
+          headline: "Track Needs Target",
+          body: "Track is selected from the advanced lane, but target readiness is still staged explicitly on the camera surface before tracking can begin.",
+          bridge: ["Bridge Ready", "good"],
+          owner: "Owner: Remote Phone",
+          power: "84% / 42ms",
+          focusTitle: "Advanced Entry Open",
+          focusCopy: "Track remains a deliberate advanced path with a visible staging requirement.",
+          entry: ["Advanced Modes", false],
+          entryCaption: "Advanced lane stays available, but not equal-priority with Drive.",
+          mode: "Track",
+          requirement: "Target selection",
+          cta: ["Select Target", "warn"],
+          note: "This scenario is useful for seeing whether Track still feels understandable when it is not permanently top-level.",
+          drawerOpen: true,
+          drawerState: "Open by intent",
+          autoStatus: "Ready",
+          trackStatus: "Need target",
+          drawerHint: "Track should feel like an intentional workflow with one last camera-based step before execution.",
+          activeAdvanced: "track",
+          target: true
+        },
+        fault: {
+          headline: "Recovery Required",
+          body: "Fault overrides both Drive and the advanced lane. The product momentarily stops being a mode tool and becomes a recovery surface.",
+          bridge: ["Bridge Lost", "bad"],
+          owner: "Owner: None",
+          power: "84% / --",
+          focusTitle: "Recovery First",
+          focusCopy: "Advanced capability should recede completely when system recovery becomes the only safe priority.",
+          entry: ["Advanced Locked", true],
+          entryCaption: "Resolve the fault before returning to runtime or advanced modes.",
+          mode: "Drive",
+          requirement: "Reconnect bridge",
+          cta: ["Recover", "warn"],
+          note: "This tests whether Drive-first structure gives the safest and clearest fault behavior.",
+          drawerOpen: false,
+          drawerState: "Collapsed for safety",
+          autoStatus: "Need setup",
+          trackStatus: "Need setup",
+          drawerHint: "Recovery should dominate the shell. Advanced entry must not compete for attention.",
+          activeAdvanced: "",
+          target: false
+        }
+      };
+
+      const buttons = Array.from(document.querySelectorAll("[data-scenario]"));
+      const headline = document.getElementById("headline");
+      const bodyCopy = document.getElementById("bodyCopy");
+      const bridgePill = document.getElementById("bridgePill");
+      const ownerPill = document.getElementById("ownerPill");
+      const powerPill = document.getElementById("powerPill");
+      const focusTitle = document.getElementById("focusTitle");
+      const focusCopy = document.getElementById("focusCopy");
+      const entryButton = document.getElementById("entryButton");
+      const entryCaption = document.getElementById("entryCaption");
+      const modeDrawer = document.getElementById("modeDrawer");
+      const drawerState = document.getElementById("drawerState");
+      const autoOption = document.getElementById("autoOption");
+      const trackOption = document.getElementById("trackOption");
+      const autoStatus = document.getElementById("autoStatus");
+      const trackStatus = document.getElementById("trackStatus");
+      const drawerHint = document.getElementById("drawerHint");
+      const modeValue = document.getElementById("modeValue");
+      const requirementValue = document.getElementById("requirementValue");
+      const ctaButton = document.getElementById("ctaButton");
+      const footerNote = document.getElementById("footerNote");
+      const targetRing = document.getElementById("targetRing");
+
+      function setPillTone(element, tone) {
+        element.classList.remove("good", "warn", "bad");
+        if (tone) {
+          element.classList.add(tone);
+        }
+      }
+
+      function setScenario(name) {
+        const scenario = scenarios[name];
+        if (!scenario) {
+          return;
+        }
+
+        buttons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.scenario === name);
+        });
+
+        headline.textContent = scenario.headline;
+        bodyCopy.textContent = scenario.body;
+        focusTitle.textContent = scenario.focusTitle;
+        focusCopy.textContent = scenario.focusCopy;
+
+        bridgePill.textContent = scenario.bridge[0];
+        setPillTone(bridgePill, scenario.bridge[1]);
+        ownerPill.textContent = scenario.owner;
+        powerPill.textContent = scenario.power;
+
+        entryButton.textContent = scenario.entry[0];
+        entryButton.classList.toggle("disabled", scenario.entry[1]);
+        entryCaption.textContent = scenario.entryCaption;
+
+        modeDrawer.classList.toggle("open", scenario.drawerOpen);
+        modeDrawer.classList.toggle("collapsed", !scenario.drawerOpen);
+        drawerState.textContent = scenario.drawerState;
+
+        autoStatus.textContent = scenario.autoStatus;
+        trackStatus.textContent = scenario.trackStatus;
+        drawerHint.textContent = scenario.drawerHint;
+
+        autoOption.className = "advanced-chip";
+        trackOption.className = "advanced-chip";
+
+        if (scenario.autoStatus !== "Ready") {
+          autoOption.classList.add("blocked");
+        }
+        if (scenario.trackStatus !== "Ready") {
+          trackOption.classList.add("blocked");
+        }
+        if (scenario.activeAdvanced === "auto") {
+          autoOption.classList.add("active");
+        }
+        if (scenario.activeAdvanced === "track") {
+          trackOption.classList.add("active");
+        }
+
+        modeValue.textContent = scenario.mode;
+        requirementValue.textContent = scenario.requirement;
+        ctaButton.textContent = scenario.cta[0];
+        ctaButton.className = "cta";
+        if (scenario.cta[1]) {
+          ctaButton.classList.add(scenario.cta[1]);
+        }
+
+        footerNote.textContent = scenario.note;
+        targetRing.classList.toggle("active", scenario.target);
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => setScenario(button.dataset.scenario));
+      });
+
+      setScenario("drive_idle");
+    </script>
+  </body>
+</html>

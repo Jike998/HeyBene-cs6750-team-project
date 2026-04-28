@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>OpenBot Controller V2 · Immersive FPV</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020617;
+        --panel: rgba(15, 23, 42, 0.42);
+        --panel-strong: rgba(15, 23, 42, 0.58);
+        --border: rgba(255,255,255,0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        touch-action: none;
+        background: var(--bg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      .shell {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .feed {
+        position: absolute;
+        inset: -4%;
+        width: calc(100% + 8%);
+        height: calc(100% + 8%);
+        object-fit: cover;
+        transform: scale(1.02);
+        filter: saturate(0.86) brightness(0.7) contrast(1.05);
+      }
+
+      .shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 52%, rgba(255,255,255,0.12), transparent 22%),
+          radial-gradient(circle at 80% 60%, rgba(34,197,94,0.12), transparent 18%),
+          linear-gradient(180deg, rgba(2,6,23,0.18), rgba(2,6,23,0.36) 42%, rgba(2,6,23,0.82));
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .glass {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(2, 6, 23, 0.34), inset 0 1px 0 rgba(255,255,255,0.08);
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+      }
+
+      .glass-strong {
+        background: var(--panel-strong);
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow: 0 26px 70px rgba(2, 6, 23, 0.42), inset 0 1px 0 rgba(255,255,255,0.08);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+      }
+
+      .battery-icon {
+        width: 1rem;
+        height: 1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1.5px solid rgba(255,255,255,0.64);
+        border-radius: 0.22rem;
+        position: relative;
+      }
+
+      .battery-icon::before {
+        content: "";
+        position: absolute;
+        right: -0.2rem;
+        width: 0.14rem;
+        height: 0.38rem;
+        border-radius: 0 0.12rem 0.12rem 0;
+        background: rgba(255,255,255,0.64);
+      }
+
+      .battery-fill {
+        width: 72%;
+        height: 72%;
+        border-radius: 0.08rem;
+        background: rgba(134,239,172,0.72);
+      }
+
+      .mode-toggle[data-mode='auto'] {
+        background: rgba(20, 83, 45, 0.52);
+        border-color: rgba(134,239,172,0.3);
+        color: #dcfce7;
+      }
+
+      .reticle {
+        position: absolute;
+        inset: 50% auto auto 50%;
+        width: min(46vw, 420px);
+        height: min(46vw, 420px);
+        transform: translate(-50%, -50%);
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.06);
+        background: radial-gradient(circle, rgba(255,255,255,0.04), transparent 66%);
+        opacity: 0.9;
+      }
+
+      .reticle::before,
+      .reticle::after {
+        content: "";
+        position: absolute;
+        background: rgba(255,255,255,0.12);
+      }
+
+      .reticle::before {
+        width: 42%;
+        height: 1px;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      .reticle::after {
+        width: 1px;
+        height: 42%;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      .steering-wheel {
+        transition: transform 120ms ease;
+        transform-origin: center;
+      }
+
+      .speed-module {
+        width: 126px;
+        padding: 16px 16px 20px;
+        border-radius: 34px;
+      }
+
+      .speed-rail-wrap {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: min(48vh, 390px);
+      }
+
+      .speed-rail-bg {
+        position: absolute;
+        width: 24px;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.08));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.16);
+      }
+
+      .speed-fill {
+        position: absolute;
+        bottom: 0;
+        width: 24px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, rgba(74,222,128,0.9), rgba(22,163,74,0.92));
+        box-shadow: 0 0 18px rgba(74,222,128,0.18);
+      }
+
+      .speed-rail {
+        position: relative;
+        z-index: 2;
+        writing-mode: vertical-lr;
+        direction: rtl;
+        -webkit-appearance: none;
+        appearance: none;
+        width: 24px;
+        height: 100%;
+        background: transparent;
+      }
+
+      .speed-rail::-webkit-slider-runnable-track,
+      .speed-rail::-moz-range-track {
+        width: 24px;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      .speed-rail::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 62px;
+        height: 62px;
+        border-radius: 999px;
+        border: 4px solid rgba(255,255,255,0.92);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(226,232,240,0.98));
+        box-shadow: 0 14px 30px rgba(15,23,42,0.3);
+      }
+
+      .speed-rail::-moz-range-thumb {
+        width: 62px;
+        height: 62px;
+        border-radius: 999px;
+        border: 4px solid rgba(255,255,255,0.92);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(226,232,240,0.98));
+        box-shadow: 0 14px 30px rgba(15,23,42,0.3);
+      }
+
+      #startOverlay {
+        transition: opacity 220ms ease, visibility 220ms ease;
+      }
+
+      #startOverlay.hidden-overlay {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .rotate-notice {
+        display: none;
+      }
+
+      @media (max-width: 920px) {
+        .top-bar {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 10px;
+        }
+
+        .top-actions {
+          justify-content: space-between;
+          width: 100%;
+        }
+
+        .mode-toggle {
+          font-size: 1rem;
+          padding: 0.75rem 1rem;
+        }
+
+        .right-rail {
+          right: 0.9rem;
+        }
+
+        .speed-module {
+          width: 108px;
+          padding: 12px 12px 16px;
+        }
+
+        .speed-rail-wrap {
+          height: min(42vh, 290px);
+        }
+      }
+
+      @media (max-height: 520px) {
+        .speed-rail-wrap {
+          height: min(40vh, 250px);
+        }
+
+        .speed-rail::-webkit-slider-thumb,
+        .speed-rail::-moz-range-thumb {
+          width: 52px;
+          height: 52px;
+        }
+
+        .reticle {
+          width: min(36vw, 280px);
+          height: min(36vw, 280px);
+        }
+      }
+
+      @media (orientation: portrait) {
+        .landscape-ui {
+          filter: blur(10px);
+          transform: scale(1.03);
+        }
+
+        .rotate-notice {
+          position: absolute;
+          inset: 0;
+          z-index: 45;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1.5rem;
+          background: rgba(2, 6, 23, 0.74);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell text-white">
+      <video class="feed" autoplay muted loop playsinline preload="auto">
+        <source src="https://cdn.coverr.co/videos/coverr-driving-on-a-mountain-road-1560673445668?download=1080p" type="video/mp4" />
+      </video>
+
+      <div class="landscape-ui relative z-10 h-full w-full">
+        <section class="absolute inset-x-0 top-0 z-20 px-4 pt-[max(0.9rem,env(safe-area-inset-top))] sm:px-8">
+          <div class="top-bar flex items-start justify-between gap-4">
+            <div class="glass rounded-full px-4 py-3 text-sm font-medium text-white/92">
+              <span class="inline-flex items-center gap-3">
+                <span class="battery-icon"><span class="battery-fill"></span></span>
+                85%
+              </span>
+            </div>
+
+            <div class="absolute left-1/2 top-full mt-2 -translate-x-1/2 rounded-full border border-sky-400/20 bg-sky-500/12 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-sky-100/90">
+              V2.1 IMMERSIVE FPV
+            </div>
+
+            <div class="top-actions flex items-center gap-3">
+              <div class="glass rounded-full px-4 py-3 text-xs uppercase tracking-[0.24em] text-white/52">FPV Live</div>
+              <button id="modeToggle" type="button" data-mode="manual" class="mode-toggle glass rounded-full px-6 py-3 text-lg font-semibold tracking-wide text-white/92 sm:text-xl">
+                Mode: Manual
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="absolute inset-0 z-10 flex items-center justify-center px-8">
+          <div class="pointer-events-none relative flex w-full max-w-5xl flex-col items-center justify-center text-center">
+            <div class="reticle"></div>
+            <div class="text-5xl font-semibold tracking-tight text-white/16 sm:text-7xl">Live Camera Feed</div>
+            <div class="mt-8 flex flex-col items-center gap-4">
+              <svg id="wheel" class="steering-wheel h-20 w-20 text-white/72 sm:h-24 sm:w-24" viewBox="0 0 100 100" fill="none">
+                <circle cx="50" cy="50" r="36" stroke="currentColor" stroke-width="5.5"></circle>
+                <circle cx="50" cy="50" r="7" fill="currentColor"></circle>
+                <path d="M18 44 H82" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"></path>
+                <path d="M50 18 V82" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"></path>
+              </svg>
+              <div id="steeringText" class="text-xl font-medium tracking-wide text-white/78 sm:text-4xl">Steering: Center</div>
+              <div id="sensorHint" class="glass rounded-full px-4 py-2 text-[0.7rem] uppercase tracking-[0.24em] text-white/52 sm:text-sm">Tilt device to steer</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="right-rail absolute right-4 top-1/2 z-20 -translate-y-1/2 sm:right-8">
+          <div class="speed-module glass-strong flex flex-col items-center gap-4">
+            <div class="text-xs uppercase tracking-[0.24em] text-white/50">Speed</div>
+            <div class="speed-rail-wrap">
+              <div class="speed-rail-bg"></div>
+              <div id="speedFill" class="speed-fill" style="height: 0%;"></div>
+              <input id="speedSlider" class="speed-rail" type="range" min="0" max="100" step="1" value="0" />
+            </div>
+            <div class="flex w-full items-center justify-between text-[0.65rem] uppercase tracking-[0.2em] text-white/42">
+              <span>Idle</span>
+              <span>Max</span>
+            </div>
+            <div id="speedValue" class="rounded-full border border-white/10 bg-white/6 px-3 py-2 text-base font-medium text-white/82">0%</div>
+          </div>
+        </section>
+      </div>
+
+      <section id="startOverlay" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/88 px-6">
+        <div class="glass-strong max-w-xl rounded-[2rem] p-8 text-center sm:p-10">
+          <div class="text-sm uppercase tracking-[0.26em] text-white/42">Immersive FPV</div>
+          <div class="mt-3 text-3xl font-semibold text-white sm:text-4xl">Tap to Start &amp; Enable Sensors</div>
+          <p class="mt-4 text-base leading-7 text-white/64 sm:text-lg">
+            Motion steering needs gyroscope access. On iPhone and iPad this will trigger the iOS motion permission prompt before the controller becomes active.
+          </p>
+          <button id="startButton" type="button" class="mt-8 rounded-full bg-white px-8 py-4 text-lg font-semibold text-slate-900 transition hover:bg-slate-100 active:scale-[0.98]">
+            Enable Motion Steering
+          </button>
+          <p id="permissionStatus" class="mt-4 text-sm tracking-wide text-white/45"></p>
+        </div>
+      </section>
+
+      <section class="rotate-notice">
+        <div class="glass-strong max-w-sm rounded-[2rem] p-8 text-center">
+          <div class="text-sm uppercase tracking-[0.28em] text-white/46">Immersive FPV</div>
+          <div class="mt-3 text-3xl font-semibold text-white">Rotate to Landscape</div>
+          <p class="mt-4 text-base leading-7 text-white/64">
+            This prototype is built for landscape viewing with a right-side throttle rail and gyroscope steering.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        autoMode: false,
+        speed: 0,
+        steeringDegrees: 0,
+        filteredSteering: 0,
+        listening: false,
+      };
+
+      const els = {
+        modeToggle: document.getElementById('modeToggle'),
+        speedSlider: document.getElementById('speedSlider'),
+        speedValue: document.getElementById('speedValue'),
+        speedFill: document.getElementById('speedFill'),
+        wheel: document.getElementById('wheel'),
+        steeringText: document.getElementById('steeringText'),
+        sensorHint: document.getElementById('sensorHint'),
+        startOverlay: document.getElementById('startOverlay'),
+        startButton: document.getElementById('startButton'),
+        permissionStatus: document.getElementById('permissionStatus'),
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function renderMode() {
+        els.modeToggle.dataset.mode = state.autoMode ? 'auto' : 'manual';
+        els.modeToggle.textContent = state.autoMode ? 'Mode: Auto' : 'Mode: Manual';
+      }
+
+      function renderSpeed() {
+        els.speedValue.textContent = `${state.speed}%`;
+        els.speedFill.style.height = `${state.speed}%`;
+      }
+
+      function renderSteering() {
+        const value = Math.round(state.filteredSteering);
+        els.wheel.style.transform = `rotate(${value}deg)`;
+
+        if (Math.abs(value) <= 3) {
+          els.steeringText.textContent = 'Steering: Center';
+          return;
+        }
+
+        if (value < 0) {
+          els.steeringText.textContent = `Steering: Left ${Math.abs(value)}°`;
+        } else {
+          els.steeringText.textContent = `Steering: Right ${value}°`;
+        }
+      }
+
+      function getLandscapeTilt(event) {
+        const gamma = typeof event.gamma === 'number' ? event.gamma : 0;
+        const beta = typeof event.beta === 'number' ? event.beta : 0;
+        const angle = typeof screen.orientation?.angle === 'number'
+          ? screen.orientation.angle
+          : typeof window.orientation === 'number'
+            ? window.orientation
+            : window.innerWidth > window.innerHeight
+              ? 90
+              : 0;
+
+        if (angle === 90) return gamma;
+        if (angle === -90 || angle === 270) return -gamma;
+        return beta;
+      }
+
+      function handleOrientation(event) {
+        const tilt = clamp(getLandscapeTilt(event), -32, 32);
+        state.steeringDegrees = tilt;
+        state.filteredSteering += (tilt - state.filteredSteering) * 0.22;
+        if (Math.abs(state.filteredSteering) < 1.5) state.filteredSteering = 0;
+        renderSteering();
+      }
+
+      function startSensors() {
+        if (state.listening) return;
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        state.listening = true;
+        els.sensorHint.textContent = 'Gyroscope steering active';
+      }
+
+      async function enableSensors() {
+        els.permissionStatus.textContent = 'Requesting sensor access…';
+
+        try {
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            if (permission !== 'granted') {
+              els.permissionStatus.textContent = 'Sensor permission denied. Please allow Motion & Orientation access.';
+              return;
+            }
+          }
+
+          startSensors();
+          els.permissionStatus.textContent = 'Sensors enabled.';
+          els.startOverlay.classList.add('hidden-overlay');
+        } catch (error) {
+          els.permissionStatus.textContent = 'Could not enable sensors on this device.';
+          console.error(error);
+        }
+      }
+
+      els.startButton.addEventListener('click', enableSensors);
+      els.modeToggle.addEventListener('click', () => {
+        state.autoMode = !state.autoMode;
+        renderMode();
+      });
+
+      els.speedSlider.addEventListener('input', (event) => {
+        state.speed = Number(event.target.value);
+        renderSpeed();
+      });
+
+      document.addEventListener('touchmove', (event) => event.preventDefault(), { passive: false });
+      document.addEventListener('gesturestart', (event) => event.preventDefault());
+      document.addEventListener('gesturechange', (event) => event.preventDefault());
+      document.addEventListener('gestureend', (event) => event.preventDefault());
+      document.addEventListener('contextmenu', (event) => event.preventDefault());
+
+      renderMode();
+      renderSpeed();
+      renderSteering();
+    </script>
+  </body>
+</html>

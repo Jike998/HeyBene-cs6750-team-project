@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../services/bluetooth_robot_link_service_adapter.dart';
 import '../domain/control_layout.dart';
 import '../state/control_controller.dart';
 import '../state/control_state.dart';
@@ -240,8 +241,15 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.read<ControlController>();
-    final bluetoothLinked = state.connection.usbConnected;
+    final bluetoothLinked = controller.bluetoothLinked;
+    final usbLinked = controller.directUsbConnected;
+    final linkActive = bluetoothLinked || usbLinked;
     final latency = state.telemetry.latency;
+    final linkLabel = switch ((bluetoothLinked, usbLinked)) {
+      (true, _) => 'BT Linked',
+      (false, true) => 'USB Linked',
+      _ => 'Robot Link',
+    };
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,21 +257,21 @@ class _TopBar extends StatelessWidget {
         Row(
           children: [
             _InfoPill(
-              label: bluetoothLinked ? 'BT Linked' : 'BT Link',
-              tone: bluetoothLinked ? _PillTone.good : _PillTone.danger,
+              label: linkLabel,
+              tone: linkActive ? _PillTone.good : _PillTone.danger,
               onTap:
-                  state.usbBusy
+                  state.linkBusy
                       ? null
                       : () {
                         unawaited(
-                          _handleBluetoothTap(context, controller),
+                          _handleRobotLinkTap(context, controller),
                         );
                       },
             ),
             const SizedBox(width: 12),
             _InfoPill(
-              label: bluetoothLinked && latency > 0 ? '${latency}ms' : '--',
-              tone: switch ((bluetoothLinked, latency)) {
+              label: linkActive && latency > 0 ? '${latency}ms' : '--',
+              tone: switch ((linkActive, latency)) {
                 (false, _) => _PillTone.danger,
                 (true, <= 0) => _PillTone.danger,
                 (true, <= 60) => _PillTone.good,
@@ -279,14 +287,52 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  Future<void> _handleBluetoothTap(
+  Future<void> _handleRobotLinkTap(
     BuildContext context,
     ControlController controller,
   ) async {
     FocusManager.instance.primaryFocus?.unfocus();
-    await controller.toggleRobotLink();
+    if (controller.bluetoothLinked) {
+      await controller.disconnectBluetoothRobotLink();
+      return;
+    }
+
+    if (controller.directUsbConnected) {
+      await controller.toggleDirectUsbLink();
+      return;
+    }
+
+    final choice = await showModalBottomSheet<_RobotLinkChoice>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const _RobotLinkChooserSheet(),
+    );
+    if (!context.mounted || choice == null) return;
+
+    switch (choice) {
+      case _RobotLinkChoice.usb:
+        await controller.toggleDirectUsbLink();
+        return;
+      case _RobotLinkChoice.bluetooth:
+        final devices = await controller.getBondedRobotDevices();
+        if (!context.mounted || devices.isEmpty) return;
+
+        final address = await showModalBottomSheet<String>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => _BondedRobotPicker(devices: devices),
+        );
+        if (!context.mounted || address == null || address.isEmpty) return;
+
+        await controller.connectBluetoothRobotLink(address);
+        return;
+    }
   }
 }
+
+enum _RobotLinkChoice { bluetooth, usb }
 
 enum _PillTone { good, warning, danger }
 
@@ -372,22 +418,191 @@ class _InfoPill extends StatelessWidget {
   }
 }
 
+class _RobotLinkChooserSheet extends StatelessWidget {
+  const _RobotLinkChooserSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, 0, 14, math.max(14, bottomInset + 8)),
+        child: _GlassPanel(
+          borderRadius: BorderRadius.circular(28),
+          blurSigma: 28,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xCC11161F), Color(0xC4171C26)],
+          ),
+          innerGradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x18FFFFFF), Color(0x06FFFFFF)],
+          ),
+          borderColor: const Color(0x34FFFFFF),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 0, 0, 0.28),
+              blurRadius: 26,
+              offset: Offset(0, 18),
+            ),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Choose Link Type',
+                  style: TextStyle(
+                    color: Color(0xFFF2F5FF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Use Bluetooth to link a robot phone, or USB for direct local control.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _RobotLinkOptionTile(
+                  icon: Icons.bluetooth_rounded,
+                  title: 'Robot Phone via Bluetooth',
+                  subtitle: 'Choose a paired Android phone running the host role.',
+                  onTap: () {
+                    Navigator.of(context).pop(_RobotLinkChoice.bluetooth);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _RobotLinkOptionTile(
+                  icon: Icons.usb_rounded,
+                  title: 'Direct USB',
+                  subtitle: 'Connect this phone directly to robot hardware through USB.',
+                  onTap: () {
+                    Navigator.of(context).pop(_RobotLinkChoice.usb);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RobotLinkOptionTile extends StatelessWidget {
+  const _RobotLinkOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: _GlassPanel(
+        borderRadius: BorderRadius.circular(22),
+        blurSigma: 18,
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x4AFFFFFF), Color(0x18FFFFFF)],
+        ),
+        innerGradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x16FFFFFF), Color(0x04FFFFFF)],
+        ),
+        borderColor: const Color(0x2FFFFFFF),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(19),
+                color: Colors.white.withValues(alpha: 0.08),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white.withValues(alpha: 0.92),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFFF5F8FF),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.60),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withValues(alpha: 0.74),
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BondedRobotPicker extends StatelessWidget {
   const _BondedRobotPicker({required this.devices});
 
-  final List<Map<String, dynamic>> devices;
+  final List<BondedRobotDevice> devices;
 
   @override
   Widget build(BuildContext context) {
     final sortedDevices = [...devices]
       ..sort((left, right) {
-        final leftLastUsed = left['lastUsed'] == true;
-        final rightLastUsed = right['lastUsed'] == true;
+        final leftLastUsed = left.lastUsed;
+        final rightLastUsed = right.lastUsed;
         if (leftLastUsed != rightLastUsed) {
           return leftLastUsed ? -1 : 1;
         }
-        final leftName = (left['name']?.toString() ?? '').toLowerCase();
-        final rightName = (right['name']?.toString() ?? '').toLowerCase();
+        final leftName = left.name.toLowerCase();
+        final rightName = right.name.toLowerCase();
         return leftName.compareTo(rightName);
       });
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
@@ -451,18 +666,14 @@ class _BondedRobotPicker extends StatelessWidget {
                           (context, index) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final device = sortedDevices[index];
-                        final name =
-                            device['name']?.toString().trim().isNotEmpty == true
-                                ? device['name'].toString().trim()
-                                : 'Robot phone';
-                        final address = device['address']?.toString() ?? '';
-                        final lastUsed = device['lastUsed'] == true;
                         return _BondedRobotTile(
-                          name: name,
-                          address: address,
-                          lastUsed: lastUsed,
+                          name: device.name.trim().isNotEmpty
+                              ? device.name.trim()
+                              : 'Robot phone',
+                          address: device.address,
+                          lastUsed: device.lastUsed,
                           onTap: () {
-                            Navigator.of(context).pop(address);
+                            Navigator.of(context).pop(device.address);
                           },
                         );
                       },

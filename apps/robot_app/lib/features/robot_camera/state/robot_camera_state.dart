@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../services/robot_backend_service.dart';
 import '../../connection/domain/connection_snapshot.dart';
 import '../../modes/domain/robot_mode.dart';
 import '../../telemetry/domain/telemetry_snapshot.dart';
@@ -27,8 +28,21 @@ class RobotCameraState extends ChangeNotifier {
   bool driveArmed = false;
   bool gamepadConnected = false;
 
-  // Drive mode
+  bool backendReady = false;
+  bool backendActive = false;
   bool collecting = false;
+  String backendStatus = 'Backend idle';
+  String? collectionSessionPath;
+  List<RobotBackendModel> backendModels = const [];
+  double backendSuggestedLeft = 0;
+  double backendSuggestedRight = 0;
+  int backendFramesProcessed = 0;
+  int backendLastInferenceMs = 0;
+  double backendFps = 0;
+  String? backendModelId;
+  String? previewFrameBase64;
+
+  // Drive mode
   DriveControllerType driveController = DriveControllerType.gamepad;
   SpeedMode driveSpeedMode = SpeedMode.normal;
 
@@ -53,8 +67,6 @@ class RobotCameraState extends ChangeNotifier {
   Timer? _timer;
   final _random = Random();
 
-  // When real USB/BLE telemetry is present, the controller will override
-  // the relevant fields. This timer only keeps the UI alive in demo mode.
   void start() {
     _timer ??= Timer.periodic(const Duration(milliseconds: 1500), (_) {
       telemetry = telemetry.copyWith(
@@ -81,6 +93,37 @@ class RobotCameraState extends ChangeNotifier {
       distance: distance,
       speed: speed,
     );
+    notifyListeners();
+  }
+
+  void applyBackendModels(List<RobotBackendModel> models) {
+    backendModels = models;
+    notifyListeners();
+  }
+
+  void setCollectionSessionPath(String? value) {
+    if (collectionSessionPath == value) return;
+    collectionSessionPath = value;
+    notifyListeners();
+  }
+
+  void setCollecting(bool value) {
+    if (collecting == value) return;
+    collecting = value;
+    notifyListeners();
+  }
+
+  void applyBackendSnapshot(RobotBackendSnapshot snapshot) {
+    backendReady = snapshot.initialized;
+    backendActive = snapshot.active;
+    backendStatus = snapshot.status;
+    backendSuggestedLeft = snapshot.suggestedLeft;
+    backendSuggestedRight = snapshot.suggestedRight;
+    backendFramesProcessed = snapshot.framesProcessed;
+    backendLastInferenceMs = snapshot.lastInferenceMs;
+    backendFps = snapshot.framesPerSecond;
+    backendModelId = snapshot.activeModelId;
+    previewFrameBase64 = snapshot.previewFrameBase64;
     notifyListeners();
   }
 
@@ -146,13 +189,13 @@ class RobotCameraState extends ChangeNotifier {
     trackingStatus = 'Acquiring\u2026';
     telemetry = telemetry.copyWith(confidence: 76);
     notifyListeners();
+  }
 
-    Future<void>.delayed(const Duration(milliseconds: 420), () {
-      if (mode != RobotMode.track || trackingPoint == null) return;
-      trackingStatus = 'Target locked';
-      telemetry = telemetry.copyWith(confidence: 95);
-      notifyListeners();
-    });
+  void setTrackingLocked() {
+    if (mode != RobotMode.track || trackingPoint == null) return;
+    trackingStatus = 'Target locked';
+    telemetry = telemetry.copyWith(confidence: 95);
+    notifyListeners();
   }
 
   void setDriveController(DriveControllerType v) {
