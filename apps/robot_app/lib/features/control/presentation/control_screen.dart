@@ -38,31 +38,42 @@ class ControlScreen extends StatelessWidget {
           ),
           const _SceneOverlay(),
           const _TopScrim(),
-          if (!state.isPortraitLayout)
-            SafeArea(
-              bottom: false,
-              child: Stack(
-                children: [
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 18,
+                  left: 18,
+                  right: 18,
+                  child: _TopBar(
+                    state: state,
+                    onOpenRobotMode: onOpenRobotMode,
+                  ),
+                ),
+                if (state.initializationError != null)
                   Positioned(
-                    top: 18,
+                    top: state.isPortraitLayout ? 126 : 104,
                     left: 18,
-                    right: 18,
-                    child: _TopBar(
-                      state: state,
-                      onOpenRobotMode: onOpenRobotMode,
+                    child: _InfoPill(
+                      label: state.initializationError!,
+                      tone: _PillTone.warning,
+                      compact: true,
                     ),
                   ),
-                  if (state.initializationError != null)
-                    Positioned(
-                      top: 74,
-                      left: 18,
-                      child: _InfoPill(
-                        label: state.initializationError!,
-                        tone: _PillTone.warning,
-                        compact: true,
-                      ),
-                    ),
-                ],
+              ],
+            ),
+          ),
+          if (!state.isPortraitLayout)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: safePadding.bottom + 20,
+              child: Center(
+                child: _DrivingModeSwitcher(
+                  drivingMode: state.drivingMode,
+                  onSelected: controller.setDrivingMode,
+                ),
               ),
             ),
           if (state.isPortraitLayout)
@@ -71,7 +82,6 @@ class ControlScreen extends StatelessWidget {
                 steering: state.oneHandSteering,
                 throttle: state.oneHandThrottle,
                 active: state.oneHandActive,
-                onOpenRobotMode: onOpenRobotMode,
               ),
             ),
           if (!state.isPortraitLayout)
@@ -328,19 +338,20 @@ class _TopBar extends StatelessWidget {
       _ => 'Robot Link',
     };
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _InfoPill(
                     label: linkLabel,
-                    tone: linkActive ? _PillTone.good : _PillTone.danger,
+                    tone: _PillTone.neutral,
                     compact: true,
                     onTap:
                         state.linkBusy
@@ -351,41 +362,41 @@ class _TopBar extends StatelessWidget {
                               );
                             },
                   ),
-                  const SizedBox(width: 8),
                   _InfoPill(
                     label: linkActive && latency > 0 ? '${latency}ms' : '--',
                     compact: true,
-                    tone: switch ((linkActive, latency)) {
-                      (false, _) => _PillTone.danger,
-                      (true, <= 0) => _PillTone.danger,
-                      (true, <= 60) => _PillTone.good,
-                      (true, <= 120) => _PillTone.warning,
-                      _ => _PillTone.danger,
-                    },
+                    tone: _PillTone.neutral,
+                  ),
+                  _InfoPill(
+                    label: state.layout.label,
+                    compact: true,
+                    tone: _PillTone.neutral,
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              _DrivingModeSwitcher(
-                drivingMode: state.drivingMode,
-                onSelected: controller.setDrivingMode,
-              ),
-            ],
+            ),
+            const SizedBox(width: 10),
+            _TopIconButton(
+              icon: Icons.tune_rounded,
+              onPressed: () {
+                unawaited(_openControllerSettings(context));
+              },
+            ),
+            const SizedBox(width: 8),
+            _TopIconButton(
+              icon: Icons.smart_toy_rounded,
+              onPressed: () {
+                unawaited(onOpenRobotMode());
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: _DrivingModeSwitcher(
+            drivingMode: state.drivingMode,
+            onSelected: controller.setDrivingMode,
           ),
-        ),
-        const SizedBox(width: 8),
-        _TopIconButton(
-          icon: Icons.tune_rounded,
-          onPressed: () {
-            unawaited(_openControllerSettings(context));
-          },
-        ),
-        const SizedBox(width: 8),
-        _TopIconButton(
-          icon: Icons.smart_toy_rounded,
-          onPressed: () {
-            unawaited(onOpenRobotMode());
-          },
         ),
       ],
     );
@@ -458,7 +469,7 @@ class _TopBar extends StatelessWidget {
 
 enum _RobotLinkChoice { bluetooth, usb }
 
-enum _PillTone { good, warning, danger }
+enum _PillTone { good, warning, danger, neutral }
 
 class _InfoPill extends StatelessWidget {
   const _InfoPill({
@@ -476,19 +487,22 @@ class _InfoPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gradientColors = switch (tone) {
-      _PillTone.good => const [Color(0x8D284432), Color(0x6E1F3828)],
-      _PillTone.warning => const [Color(0x9565482B), Color(0x7348331D)],
-      _PillTone.danger => const [Color(0x97543C45), Color(0x74382730)],
+      _PillTone.good => const [Color(0x4C1A212C), Color(0x381A212C)],
+      _PillTone.warning => const [Color(0x5A4A3520), Color(0x40322216)],
+      _PillTone.danger => const [Color(0x5A4A232B), Color(0x402F181F)],
+      _PillTone.neutral => const [Color(0x661A212C), Color(0x4A1A212C)],
     };
     final borderColor = switch (tone) {
-      _PillTone.good => const Color(0x28FFFFFF),
-      _PillTone.warning => const Color(0x2EFFF2D9),
-      _PillTone.danger => const Color(0x30FFE2E5),
+      _PillTone.good => FusionSurfaceTokens.chromeBorderSoft,
+      _PillTone.warning => const Color(0x36FFF2D9),
+      _PillTone.danger => const Color(0x36FFE2E5),
+      _PillTone.neutral => FusionSurfaceTokens.chromeBorderSoft,
     };
     final foreground = switch (tone) {
-      _PillTone.good => const Color(0xFFF3FFF6),
+      _PillTone.good => FusionSurfaceTokens.textPrimary,
       _PillTone.warning => const Color(0xFFFFF9EE),
       _PillTone.danger => const Color(0xFFFFF3F5),
+      _PillTone.neutral => FusionSurfaceTokens.textPrimary,
     };
 
     final pill = _GlassPanel(
@@ -947,9 +961,9 @@ class _DrivingModeSwitcher extends StatelessWidget {
                     mode == ControllerDrivingMode.autoTracking
                         ? 'Auto'
                         : mode.label,
-                width: mode == ControllerDrivingMode.autoTracking ? 74 : 82,
-                height: 38,
-                fontSize: 11,
+                width: mode == ControllerDrivingMode.autoTracking ? 64 : 72,
+                height: 34,
+                fontSize: 10,
                 active: drivingMode == mode,
                 onTap: () {
                   unawaited(onSelected(mode));
@@ -1441,6 +1455,7 @@ class _MiniActionButton extends StatelessWidget {
           border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 18, color: FusionSurfaceTokens.textPrimary),
@@ -1448,6 +1463,7 @@ class _MiniActionButton extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label!,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: FusionSurfaceTokens.textPrimary,
                   fontSize: 11,
@@ -1491,13 +1507,11 @@ class _OneHandPortraitSurface extends StatelessWidget {
     required this.steering,
     required this.throttle,
     required this.active,
-    required this.onOpenRobotMode,
   });
 
   final double steering;
   final double throttle;
   final bool active;
-  final Future<void> Function() onOpenRobotMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1508,68 +1522,6 @@ class _OneHandPortraitSurface extends StatelessWidget {
 
     return Stack(
       children: [
-        Positioned(
-          top: safePadding.top + 18,
-          left: 18,
-          right: 18,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _InfoPill(
-                      label: 'One Hand',
-                      tone: _PillTone.good,
-                      compact: true,
-                    ),
-                    const SizedBox(height: 10),
-                    _DrivingModeSwitcher(
-                      drivingMode: state.drivingMode,
-                      onSelected:
-                          context.read<ControlController>().setDrivingMode,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _TopIconButton(
-                icon: Icons.tune_rounded,
-                onPressed: () {
-                  final sheetState = context.read<ControlState>();
-                  final sheetController = context.read<ControlController>();
-                  unawaited(
-                    showModalBottomSheet<void>(
-                      context: context,
-                      backgroundColor: Colors.transparent,
-                      isScrollControlled: true,
-                      builder: (sheetContext) {
-                        return MultiProvider(
-                          providers: [
-                            ChangeNotifierProvider<ControlState>.value(
-                              value: sheetState,
-                            ),
-                            ChangeNotifierProvider<ControlController>.value(
-                              value: sheetController,
-                            ),
-                          ],
-                          child: const _ControllerSettingsSheet(),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              _TopIconButton(
-                icon: Icons.smart_toy_rounded,
-                onPressed: () {
-                  unawaited(onOpenRobotMode());
-                },
-              ),
-            ],
-          ),
-        ),
         Positioned(
           left: 0,
           right: 0,
