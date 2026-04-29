@@ -139,6 +139,8 @@ class RobotBackendBridge(
     private var activeModelSpec: BackendModelSpec? = null
     private var detectorLabels: List<String> = emptyList()
     private var collectionSessionDir: File? = null
+    private var lastTrackDetectionMs: Long = 0L
+    private var smoothedTrackAreaRatio: Double = 0.0
 
     fun attach(flutterEngine: FlutterEngine) {
         MethodChannel(
@@ -174,6 +176,8 @@ class RobotBackendBridge(
                 trackingTargetLabel = call.argument<String>("trackTargetLabel") ?: trackingTargetLabel
 
                 closeRuntime()
+                smoothedTrackAreaRatio = 0.0
+                lastTrackDetectionMs = 0L
 
                 if (mode == "drive") {
                     snapshot = snapshot.copy(
@@ -480,6 +484,8 @@ class RobotBackendBridge(
         activeModelSpec = null
         detectorLabels = emptyList()
         trackingTarget = null
+        lastTrackDetectionMs = 0L
+        smoothedTrackAreaRatio = 0.0
     }
 
     private fun ensureCollectionSession() {
@@ -581,24 +587,49 @@ class RobotBackendBridge(
             3 to numDetections,
         )
         interpreter.runForMultipleInputsOutputs(arrayOf(imageInput), outputs)
-        val bestIndex = outputScores[0].indices.maxByOrNull { outputScores[0][it] } ?: 0
-        val score = outputScores[0][bestIndex].toDouble()
-        val classId = outputClasses[0][bestIndex].toInt() + 1
-        val label = detectorLabels.getOrNull(classId) ?: trackingTargetLabel
-        val leftRight = if (label.equals(trackingTargetLabel, ignoreCase = true) && score > 0.2) {
-            val box = outputLocations[0][bestIndex]
+
+        val now = System.currentTimeMillis()
+        val detectionCount = numDetections[0].toInt().coerceIn(0, outputScores[0].size)
+        val candidates = mutableListOf<DetectorCandidate>()
+        for (index in 0 until detectionCount) {
+            val score = outputScores[0][index].toDouble()
+            if (score <= 0.2) continue
+            val classId = outputClasses[0][index].toInt() + 1
+            val label = detectorLabels.getOrNull(classId) ?: continue
+            if (!label.equals(trackingTargetLabel, ignoreCase = true)) continue
+            val box = outputLocations[0][index]
             val target = RectF(
                 box[1] * frameWidth,
                 box[0] * frameHeight,
                 box[3] * frameWidth,
                 box[2] * frameHeight,
             )
-            trackingTarget = target
-            computeTrackControls(frameWidth, frameHeight)
+            candidates += DetectorCandidate(label = label, score = score, box = sanitizeRect(target, frameWidth, frameHeight))
+        }
+
+        val bestCandidate = selectBestTrackCandidate(candidates)
+        val leftRight: Pair<Double, Double>
+        val label: String?
+        val score: Double?
+
+        if (bestCandidate != null) {
+            trackingTarget = bestCandidate.box
+            lastTrackDetectionMs = now
+            leftRight = computeTrackControls(frameWidth, frameHeight)
+            label = bestCandidate.label
+            score = bestCandidate.score
+        } else if (trackingTarget != null && now - lastTrackDetectionMs <= 450L) {
+            leftRight = computeTrackControls(frameWidth, frameHeight)
+            label = snapshot.detectionLabel ?: trackingTargetLabel
+            score = snapshot.detectionScore
         } else {
             trackingTarget = null
-            0.0 to 0.0
+            smoothedTrackAreaRatio = 0.0
+            leftRight = 0.0 to 0.0
+            label = trackingTargetLabel
+            score = 0.0
         }
+
         val end = System.currentTimeMillis()
         return InferenceResult(leftRight.first, leftRight.second, label, score, (end - start).toInt())
     }
@@ -694,6 +725,33 @@ class RobotBackendBridge(
         return -0x1000000 or ((r shl 6) and 0x00FF0000) or ((g shr 2) and 0x0000FF00) or ((b shr 10) and 0x000000FF)
     }
 
+    private fun sanitizeRect(rect: RectF, frameWidth: Int, frameHeight: Int): RectF {
+        val left = rect.left.coerceIn(0f, frameWidth.toFloat())
+        val top = rect.top.coerceIn(0f, frameHeight.toFloat())
+        val right = rect.right.coerceIn(left, frameWidth.toFloat())
+        val bottom = rect.bottom.coerceIn(top, frameHeight.toFloat())
+        return RectF(left, top, right, bottom)
+    }
+
+    private fun selectBestTrackCandidate(candidates: List<DetectorCandidate>): DetectorCandidate? {
+        if (candidates.isEmpty()) return null
+        val previousTarget = trackingTarget
+        return candidates.maxWithOrNull(
+            compareBy<DetectorCandidate>(
+                { (it.score * 100).toInt() },
+                { trackCenterPreference(it.box, previousTarget) },
+                { (it.box.width() * it.box.height()).toDouble() },
+            ),
+        )
+    }
+
+    private fun trackCenterPreference(box: RectF, previousTarget: RectF?): Double {
+        if (previousTarget == null) return 0.0
+        val dx = box.centerX() - previousTarget.centerX()
+        val dy = box.centerY() - previousTarget.centerY()
+        return -kotlin.math.hypot(dx.toDouble(), dy.toDouble())
+    }
+
     private fun computeTrackControls(
         frameWidth: Int,
         frameHeight: Int,
@@ -703,13 +761,22 @@ class RobotBackendBridge(
 
         val centerX = target.centerX().coerceIn(0f, frameWidth.toFloat())
         val xNorm = 1.0 - 2.0 * centerX / frameWidth.toDouble()
-        val steering = xNorm.coerceIn(-1.0, 1.0)
+        val steering = (xNorm * 0.72).coerceIn(-0.72, 0.72)
+
         val boxArea = target.width().toDouble() * target.height().toDouble()
         val frameArea = frameWidth.toDouble() * frameHeight.toDouble()
-        val scaleFactor = (1.0 - boxArea / frameArea).coerceIn(0.0, 1.0)
+        val rawAreaRatio = (boxArea / frameArea).coerceIn(0.0, 1.0)
+        smoothedTrackAreaRatio = if (smoothedTrackAreaRatio == 0.0) {
+            rawAreaRatio
+        } else {
+            smoothedTrackAreaRatio * 0.72 + rawAreaRatio * 0.28
+        }
+
         val speed = when {
-            scaleFactor > 0.75 -> 0.85
-            scaleFactor > 0.25 -> scaleFactor
+            smoothedTrackAreaRatio < 0.06 -> 0.78
+            smoothedTrackAreaRatio < 0.18 -> 0.62
+            smoothedTrackAreaRatio < 0.30 -> 0.42
+            smoothedTrackAreaRatio < 0.42 -> 0.24
             else -> 0.0
         }
 
@@ -770,6 +837,12 @@ class RobotBackendBridge(
         "assetAvailable" to assetExists(model.assetPath),
     )
 }
+
+data class DetectorCandidate(
+    val label: String,
+    val score: Double,
+    val box: RectF,
+)
 
 data class InferenceResult(
     val left: Double,

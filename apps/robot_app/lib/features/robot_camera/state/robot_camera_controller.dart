@@ -341,7 +341,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     state.setCollectionSessionPath(snapshot.collectionSessionPath);
     state.telemetry = state.telemetry.copyWith(samples: snapshot.sampleCount);
     state.notifyListeners();
-    if (snapshot.active && state.mode != RobotMode.drive) {
+    if (snapshot.active && state.mode == RobotMode.track) {
       unawaited(
         _applyDriveCommand(
           left: snapshot.suggestedLeft,
@@ -567,7 +567,12 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     required double left,
     required double right,
   }) async {
-    if (!state.isRunning || state.mode != RobotMode.drive) {
+    if (!state.isRunning) {
+      return;
+    }
+    final allowsRobotDrive =
+        state.mode == RobotMode.drive || state.mode == RobotMode.track;
+    if (!allowsRobotDrive) {
       return;
     }
     final isStop = left.abs() <= 0.01 && right.abs() <= 0.01;
