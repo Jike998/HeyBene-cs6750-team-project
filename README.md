@@ -1,15 +1,29 @@
 # OpenBot UI Team Workspace
 
+[中文说明](README.zh.md) | [English](README.md)
+
 This repository is organized for the Georgia Tech CS6750 team project.
 
-The current mainline scope is:
+Current working baseline:
 
-- `apps/control_app`: the mainline Flutter app, including the `FusionApp` one-phone role-switch flow
-- `apps/robot_app`: the standalone robot-side Flutter app, kept independently runnable
+- active branch for robot runtime work: `backup/working-tree-20260428-1615`
+- current active app focus: `apps/robot_app`
 
-`apps/controller_app` is intentionally kept out of the team-project mainline for now. It remains local as an archive/reference, but it is not part of the first GitHub push.
+## Current app scope
 
-## Repository Map
+- `apps/control_app`: merged Flutter app with role switching and controller-side UI work
+- `apps/robot_app`: standalone robot-side Flutter app, independently runnable, currently the main runtime focus
+
+## Start here
+
+1. Read [README.zh.md](README.zh.md) if you want the Chinese overview.
+2. Read [docs/status/robot_app_handoff.md](docs/status/robot_app_handoff.md) for the current English handoff.
+3. Read [docs/status/robot_app_handoff_zh.md](docs/status/robot_app_handoff_zh.md) for the current Chinese handoff and device test steps.
+4. Read [docs/architecture.md](docs/architecture.md).
+5. Read [docs/onboarding.md](docs/onboarding.md).
+6. Read [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Repository map
 
 ```text
 openbot-ui/
@@ -32,39 +46,9 @@ openbot-ui/
     shared_models/
 ```
 
-## Why This Layout
+## Run the apps
 
-- `control_app` is the current product-facing mainline for the merged one-phone experience.
-- `robot_app` remains independently runnable for standalone robot-side development and comparison.
-- `docs/` is the shared entry point for teammates who need context quickly.
-- `packages/` is reserved for shared code, mock implementations, and the later OpenBene APK migration.
-- design artifacts were moved into `docs/design/` so the repository root stays readable.
-
-## Start Here
-
-1. Read `docs/architecture.md`.
-2. Read `docs/onboarding.md`.
-3. Read `CONTRIBUTING.md`.
-4. Pick one app as your primary area.
-5. Use `docs/status/team-sync-template.md` when syncing progress with teammates.
-6. Use `downloads/README.md` if you want installable reference apps for demos or team onboarding.
-7. Use `docs/releases/team-build-release-checklist.md` when publishing team APKs through GitHub Releases.
-
-## Run The Apps
-
-### `control_app`
-
-Mainline runtime for the merged one-phone experience.
-
-```powershell
-cd C:\Users\jiken\Desktop\openbot-ui\apps\control_app
-flutter pub get
-flutter run
-```
-
-### `robot_app`
-
-Standalone robot-side runtime that remains independently runnable.
+### robot_app
 
 ```powershell
 cd C:\Users\jiken\Desktop\openbot-ui\apps\robot_app
@@ -72,17 +56,33 @@ flutter pub get
 flutter run
 ```
 
-## Collaboration Notes
+### control_app
 
-- UI-first contributors should spend most of their time in `lib/features` and `lib/core`.
-- hardware/backend integration should be isolated behind `lib/services` and later `packages/openbene_bridge`.
-- teammates without hardware should still be able to contribute through UI, state, design review, and mock-oriented planning.
-- `apps/control_app/lib/legacy/robot_shell` is currently a temporary active dependency of `FusionApp` host mode, even though the folder name still says `legacy`.
-- avoid treating `apps/control_app/lib/legacy/robot_shell` as a long-term destination for new shared logic; prefer active paths or shared packages when possible.
+```powershell
+cd C:\Users\jiken\Desktop\openbot-ui\apps\control_app
+flutter pub get
+flutter run
+```
 
-## References
+## Important current product rules
 
-Reference repositories that informed this workspace but were not modified here:
+- `Robot` is the source-of-truth runtime.
+- `Controller` is a remote control/view surface.
+- `START / STOP` is the single runtime gate for `Drive / Auto / Track`.
+- `START` stays visible but disabled until `Car USB` is connected.
+- Video starts only after `START`.
+- Remote control is accepted only after `START`.
+- `Track` now means category-based automatic detection and following, not tap-to-select targeting.
 
-- `C:/Users/jiken/Desktop/OpenBene/openbot-mobile-control`
-- `C:/Users/jiken/Desktop/Openbot/OpenBot-master/OpenBot-master`
+## Key current docs
+
+- [Robot App Handoff](docs/status/robot_app_handoff.md)
+- [Robot App 中文交接文档](docs/status/robot_app_handoff_zh.md)
+- [Architecture](docs/architecture.md)
+- [Onboarding](docs/onboarding.md)
+
+## Collaboration notes
+
+- For current robot runtime work, prefer `apps/robot_app` as the main implementation surface.
+- Use the handoff docs in `docs/status/` before starting UI, backend, or device testing work.
+- The Chinese handoff doc includes the current step-by-step device testing flow.
