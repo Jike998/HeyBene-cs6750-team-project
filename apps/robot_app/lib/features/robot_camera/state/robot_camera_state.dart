@@ -9,7 +9,9 @@ import '../../connection/domain/connection_snapshot.dart';
 import '../../modes/domain/robot_mode.dart';
 import '../../telemetry/domain/telemetry_snapshot.dart';
 
-enum DriveControllerType { pc, gamepad, phone }
+enum DriveControllerType { pc, gamepad, phone, none }
+
+enum VideoPhase { stopped, starting, live }
 
 enum SpeedMode { low, normal, high }
 
@@ -19,13 +21,12 @@ enum TrackModel { modelA, modelB, modelC }
 
 enum ComputeDevice { cpu, gpu, nnapi }
 
-enum TrackTargetType { person, dog, bicycle, cat }
+enum TrackTargetType { person, dog, cat, bicycle, car, banana }
 
 class RobotCameraState extends ChangeNotifier {
   RobotMode mode = RobotMode.drive;
 
   bool isRunning = false;
-  bool driveArmed = false;
   bool gamepadConnected = false;
 
   bool backendReady = false;
@@ -41,9 +42,14 @@ class RobotCameraState extends ChangeNotifier {
   double backendFps = 0;
   String? backendModelId;
   String? previewFrameBase64;
+  VideoPhase videoPhase = VideoPhase.stopped;
+  String? lastRejectReason;
+  Rect? trackingBox;
+  String? trackingLabel;
+  double? trackingConfidence;
 
   // Drive mode
-  DriveControllerType driveController = DriveControllerType.gamepad;
+  DriveControllerType driveController = DriveControllerType.none;
   SpeedMode driveSpeedMode = SpeedMode.normal;
 
   // Auto mode
@@ -61,7 +67,6 @@ class RobotCameraState extends ChangeNotifier {
 
   ConnectionSnapshot connection = ConnectionSnapshot.initial;
   TelemetrySnapshot telemetry = TelemetrySnapshot.initial;
-  Offset? trackingPoint;
   String trackingStatus = 'Target locked';
 
   Timer? _timer;
@@ -124,6 +129,27 @@ class RobotCameraState extends ChangeNotifier {
     backendFps = snapshot.framesPerSecond;
     backendModelId = snapshot.activeModelId;
     previewFrameBase64 = snapshot.previewFrameBase64;
+    trackingLabel = snapshot.detectionLabel;
+    trackingConfidence = snapshot.detectionScore;
+    if (snapshot.trackingBoxLeft != null &&
+        snapshot.trackingBoxTop != null &&
+        snapshot.trackingBoxRight != null &&
+        snapshot.trackingBoxBottom != null) {
+      trackingBox = Rect.fromLTRB(
+        snapshot.trackingBoxLeft!,
+        snapshot.trackingBoxTop!,
+        snapshot.trackingBoxRight!,
+        snapshot.trackingBoxBottom!,
+      );
+    } else {
+      trackingBox = null;
+    }
+    if (snapshot.detectionLabel != null && snapshot.detectionScore != null && mode == RobotMode.track) {
+      trackingStatus = 'Tracking ${snapshot.detectionLabel}';
+    }
+    if (snapshot.previewFrameBase64 != null && snapshot.previewFrameBase64!.isNotEmpty) {
+      videoPhase = VideoPhase.live;
+    }
     notifyListeners();
   }
 
@@ -131,22 +157,29 @@ class RobotCameraState extends ChangeNotifier {
     _timer?.cancel();
   }
 
+  void _resetRuntimeState() {
+    isRunning = false;
+    collecting = false;
+    previewFrameBase64 = null;
+    videoPhase = VideoPhase.stopped;
+    clearDriveController();
+  }
+
   void setMode(RobotMode nextMode) {
     mode = nextMode;
     if (mode != RobotMode.track) {
-      trackingPoint = null;
       trackingStatus = 'Target locked';
+      trackingBox = null;
+      trackingLabel = null;
+      trackingConfidence = null;
     }
-    if (mode != RobotMode.drive) {
-      driveArmed = false;
-      isRunning = false;
-      collecting = false;
-    }
+    _resetRuntimeState();
+    lastRejectReason = null;
     telemetry = telemetry.copyWith(
       confidence: switch (mode) {
         RobotMode.drive => collecting ? 88 : 91,
         RobotMode.auto => _confidenceForAutoModel(),
-        RobotMode.track => trackingPoint == null ? 81 : 95,
+        RobotMode.track => 91,
       },
     );
     notifyListeners();
@@ -154,11 +187,15 @@ class RobotCameraState extends ChangeNotifier {
 
   void startRobot() {
     isRunning = true;
+    lastRejectReason = null;
+    if (videoPhase == VideoPhase.stopped) {
+      videoPhase = VideoPhase.starting;
+    }
     notifyListeners();
   }
 
   void stopRobot() {
-    isRunning = false;
+    _resetRuntimeState();
     telemetry = telemetry.copyWith(
       speed: 0,
       steering: 0,
@@ -183,16 +220,8 @@ class RobotCameraState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setTrackingPoint(Offset point) {
-    if (mode != RobotMode.track) return;
-    trackingPoint = point;
-    trackingStatus = 'Acquiring\u2026';
-    telemetry = telemetry.copyWith(confidence: 76);
-    notifyListeners();
-  }
-
   void setTrackingLocked() {
-    if (mode != RobotMode.track || trackingPoint == null) return;
+    if (mode != RobotMode.track) return;
     trackingStatus = 'Target locked';
     telemetry = telemetry.copyWith(confidence: 95);
     notifyListeners();
@@ -204,19 +233,28 @@ class RobotCameraState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setDriveArmed(bool armed) {
-    if (driveArmed == armed) return;
-    driveArmed = armed;
-    if (!armed) {
-      isRunning = false;
-      collecting = false;
-      telemetry = telemetry.copyWith(
-        speed: 0,
-        steering: 0,
-      );
+  void clearDriveController() {
+    setDriveController(DriveControllerType.none);
+  }
+
+  void setLastRejectReason(String? reason) {
+    if (lastRejectReason == reason) return;
+    lastRejectReason = reason;
+    notifyListeners();
+  }
+
+  void setVideoPhase(VideoPhase phase) {
+    if (videoPhase == phase) return;
+    videoPhase = phase;
+    if (phase != VideoPhase.live) {
+      previewFrameBase64 = null;
     }
     notifyListeners();
   }
+
+  bool get videoEnabled => isRunning && videoPhase != VideoPhase.stopped;
+
+  bool get acceptsRemoteDrive => isRunning && mode == RobotMode.drive;
 
   void setGamepadConnected(bool connected) {
     if (gamepadConnected == connected) return;
@@ -230,7 +268,22 @@ class RobotCameraState extends ChangeNotifier {
   void setAutoSpeedMode(SpeedMode v) { autoSpeedMode = v; notifyListeners(); }
 
   void setTrackModel(TrackModel v) { trackModel = v; notifyListeners(); }
-  void setTrackTargetType(TrackTargetType v) { trackTargetType = v; notifyListeners(); }
+  void setTrackTargetType(TrackTargetType v) {
+    trackTargetType = v;
+    if (mode == RobotMode.track) {
+      trackingLabel = null;
+      trackingConfidence = null;
+      trackingStatus = 'Looking for ${switch (v) {
+        TrackTargetType.person => 'person',
+        TrackTargetType.dog => 'dog',
+        TrackTargetType.cat => 'cat',
+        TrackTargetType.bicycle => 'bicycle',
+        TrackTargetType.car => 'car',
+        TrackTargetType.banana => 'banana',
+      }}';
+    }
+    notifyListeners();
+  }
   void setTrackDevice(ComputeDevice v) { trackDevice = v; notifyListeners(); }
   void setTrackSpeedMode(SpeedMode v) { trackSpeedMode = v; notifyListeners(); }
 

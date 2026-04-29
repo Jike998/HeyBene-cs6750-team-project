@@ -84,7 +84,7 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
         final connection = connectionController.snapshot;
         final liveCameraController = cameraController.bootstrap.cameraService.controller;
         final cameraReady = liveCameraController != null && liveCameraController.value.isInitialized;
-        final shouldShowLivePreview = cameraReady;
+        final shouldShowLivePreview = state.isRunning && cameraReady;
 
         if (_transitionMode != state.mode && _modeFx.value == 0) {
           _transitionMode = state.mode;
@@ -117,19 +117,7 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTapDown: state.mode == RobotMode.track
-                      ? (details) {
-                          final box = context.findRenderObject() as RenderBox?;
-                          final size = box?.size;
-                          if (size == null) return;
-                          unawaited(
-                            cameraController.setTrackingPoint(
-                              details.localPosition,
-                              size,
-                            ),
-                          );
-                        }
-                      : null,
+                  onTapDown: null,
                   child: const SizedBox.expand(),
                 ),
               ),
@@ -163,9 +151,12 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
                         ],
                       ),
                     ),
-                    if (state.mode == RobotMode.track && state.trackingPoint != null)
+                    if (state.mode == RobotMode.track && state.isRunning && state.trackingBox != null)
                       Positioned.fill(
-                        child: _TrackOverlay(point: state.trackingPoint!, label: state.trackingStatus),
+                        child: _TrackOverlay(
+                          box: state.trackingBox!,
+                          label: state.trackingLabel ?? state.trackTargetType.name,
+                        ),
                       ),
                   ],
                 ),
@@ -999,11 +990,8 @@ class _MainActionFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = switch (state.mode) {
-      RobotMode.drive => state.driveArmed,
-      RobotMode.auto => state.isRunning || state.backendActive,
-      RobotMode.track => state.isRunning || state.backendActive,
-    };
+    final active = state.isRunning;
+    final startEnabled = state.connection.usbConnected;
 
     final (icon, label) = switch (state.mode) {
       RobotMode.drive => active
@@ -1014,9 +1002,7 @@ class _MainActionFab extends StatelessWidget {
           : (Icons.auto_awesome_rounded, 'START AUTO'),
       RobotMode.track => active
           ? (Icons.stop_rounded, 'STOP TRACK')
-          : (state.trackingPoint == null
-              ? (Icons.ads_click_rounded, 'SET TARGET')
-              : (Icons.center_focus_strong_rounded, 'START TRACK')),
+          : (Icons.center_focus_strong_rounded, 'START TRACK'),
     };
 
     final gradient = active
@@ -1035,54 +1021,62 @@ class _MainActionFab extends StatelessWidget {
         ? const BoxShadow(color: Color.fromRGBO(64, 82, 104, 0.18), blurRadius: 18, offset: Offset(0, 10))
         : const BoxShadow(color: Color.fromRGBO(70, 103, 138, 0.20), blurRadius: 18, offset: Offset(0, 10));
 
+    final canTap = active || startEnabled;
+
     return GestureDetector(
-      onTap: () {
-        if (active) {
-          cameraController.stopFromUi();
-        } else {
-          cameraController.startFromUi();
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
-          boxShadow: [
-            shadow,
-            const BoxShadow(
-              color: Color.fromRGBO(255, 255, 255, 0.03),
-              blurRadius: 10,
-              offset: Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Center(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: Column(
-              key: ValueKey('${state.mode.name}-$active-${state.trackingPoint != null}'),
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 20, color: FusionSurfaceTokens.textPrimary),
-                const SizedBox(height: 1),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: FusionSurfaceTokens.textPrimary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.3,
+      onTap: canTap
+          ? () {
+              if (active) {
+                cameraController.stopFromUi();
+              } else {
+                cameraController.startFromUi();
+              }
+            }
+          : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: canTap ? 1 : 0.55,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: gradient,
+            border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
+            boxShadow: [
+              shadow,
+              const BoxShadow(
+                color: Color.fromRGBO(255, 255, 255, 0.03),
+                blurRadius: 10,
+                offset: Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: Column(
+                key: ValueKey('${state.mode.name}-$active-${state.trackTargetType.name}'),
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20, color: FusionSurfaceTokens.textPrimary),
+                  const SizedBox(height: 1),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: FusionSurfaceTokens.textPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1253,20 +1247,35 @@ class _SettingsSheet extends StatelessWidget {
           const SizedBox(height: 10),
           _SettingsRow(
             label: 'Controller',
-            trailing: _SettingsPicker<DriveControllerType>(
-              value: state.driveController,
-              values: const [DriveControllerType.pc, DriveControllerType.gamepad, DriveControllerType.phone],
-              labelFor: (v) => switch (v) {
-                DriveControllerType.pc => 'PC',
-                DriveControllerType.gamepad => 'Gamepad',
-                DriveControllerType.phone => 'Phone',
-              },
-              iconFor: (v) => switch (v) {
-                DriveControllerType.pc => Icons.computer_rounded,
-                DriveControllerType.gamepad => Icons.sports_esports_rounded,
-                DriveControllerType.phone => Icons.smartphone_rounded,
-              },
-              onSelected: state.setDriveController,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  switch (state.driveController) {
+                    DriveControllerType.pc => Icons.computer_rounded,
+                    DriveControllerType.gamepad => Icons.sports_esports_rounded,
+                    DriveControllerType.phone => Icons.smartphone_rounded,
+                    DriveControllerType.none => Icons.remove_circle_outline_rounded,
+                  },
+                  size: 18,
+                  color: FusionSurfaceTokens.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  switch (state.driveController) {
+                    DriveControllerType.pc => 'PC',
+                    DriveControllerType.gamepad => 'Gamepad',
+                    DriveControllerType.phone => 'Phone',
+                    DriveControllerType.none => 'None',
+                  },
+                  style: const TextStyle(
+                    color: FusionSurfaceTokens.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 10),
@@ -1365,18 +1374,29 @@ class _SettingsSheet extends StatelessWidget {
             label: 'Target type',
             trailing: _SettingsPicker<TrackTargetType>(
               value: state.trackTargetType,
-              values: const [TrackTargetType.person, TrackTargetType.dog, TrackTargetType.bicycle, TrackTargetType.cat],
+              values: const [
+                TrackTargetType.person,
+                TrackTargetType.dog,
+                TrackTargetType.cat,
+                TrackTargetType.bicycle,
+                TrackTargetType.car,
+                TrackTargetType.banana,
+              ],
               labelFor: (v) => switch (v) {
                 TrackTargetType.person => 'Person',
                 TrackTargetType.dog => 'Dog',
-                TrackTargetType.bicycle => 'Bicycle',
                 TrackTargetType.cat => 'Cat',
+                TrackTargetType.bicycle => 'Bicycle',
+                TrackTargetType.car => 'Car',
+                TrackTargetType.banana => 'Banana',
               },
               iconFor: (v) => switch (v) {
                 TrackTargetType.person => Icons.person_rounded,
                 TrackTargetType.dog => Icons.pets_rounded,
-                TrackTargetType.bicycle => Icons.directions_bike_rounded,
                 TrackTargetType.cat => Icons.pets_rounded,
+                TrackTargetType.bicycle => Icons.directions_bike_rounded,
+                TrackTargetType.car => Icons.directions_car_rounded,
+                TrackTargetType.banana => Icons.local_grocery_store_rounded,
               },
               onSelected: state.setTrackTargetType,
             ),
@@ -1643,9 +1663,9 @@ class _SettingsPicker<T> extends StatelessWidget {
 }
 
 class _TrackOverlay extends StatelessWidget {
-  const _TrackOverlay({required this.point, required this.label});
+  const _TrackOverlay({required this.box, required this.label});
 
-  final Offset point;
+  final Rect box;
   final String label;
 
   @override
@@ -1653,38 +1673,37 @@ class _TrackOverlay extends StatelessWidget {
     return Stack(
       children: [
         Positioned(
-          left: point.dx - 58,
-          top: point.dy - 74,
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: FusionSurfaceTokens.chromeFill,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: FusionSurfaceTokens.accentSoft),
-                ),
-                child: Text(label, style: const TextStyle(color: FusionSurfaceTokens.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 116,
-                height: 116,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: FusionSurfaceTokens.accent, width: 2),
-                  color: FusionSurfaceTokens.accentSoft.withValues(alpha: 0.20),
-                ),
-                child: Stack(
-                  children: const [
-                    _TrackCorner(top: 14, left: 14),
-                    _TrackCorner(top: 14, right: 14, rightSide: true),
-                    _TrackCorner(bottom: 14, left: 14, bottomSide: true),
-                    _TrackCorner(bottom: 14, right: 14, rightSide: true, bottomSide: true),
-                  ],
-                ),
-              ),
-            ],
+          left: box.left,
+          top: box.top - 40,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: FusionSurfaceTokens.chromeFill,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: FusionSurfaceTokens.accentSoft),
+            ),
+            child: Text(label, style: const TextStyle(color: FusionSurfaceTokens.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+          ),
+        ),
+        Positioned(
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: FusionSurfaceTokens.accent, width: 2),
+              color: FusionSurfaceTokens.accentSoft.withValues(alpha: 0.20),
+            ),
+            child: Stack(
+              children: const [
+                _TrackCorner(top: 14, left: 14),
+                _TrackCorner(top: 14, right: 14, rightSide: true),
+                _TrackCorner(bottom: 14, left: 14, bottomSide: true),
+                _TrackCorner(bottom: 14, right: 14, rightSide: true, bottomSide: true),
+              ],
+            ),
           ),
         ),
       ],

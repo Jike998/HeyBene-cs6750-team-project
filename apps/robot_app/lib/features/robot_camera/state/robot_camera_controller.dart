@@ -47,7 +47,6 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       state.applyBackendModels(await bootstrap.backendService.listModels());
       await _configureBackendForMode();
       initialized = true;
-      await bootstrap.cameraService.startPreview();
       _syncStateFromBootstrap();
       await _sendStatus();
       _statusTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
@@ -55,15 +54,15 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       });
       _linkStateSubscription = bootstrap.networkService.linkStateStream.listen((connected) async {
         _syncStateFromBootstrap();
-        if (!connected && state.driveController == DriveControllerType.phone) {
-          await _stopRobotActivity(disarm: false);
+        if (!connected && state.driveController == DriveControllerType.phone && state.isRunning) {
+          await _stopRobotActivity(disarm: true);
         }
         await _sendStatus();
       });
       _pcLinkStateSubscription = bootstrap.pcLinkService.linkStateStream.listen((connected) async {
         _syncStateFromBootstrap();
-        if (!connected && state.driveController == DriveControllerType.pc) {
-          await _stopRobotActivity(disarm: false);
+        if (!connected && state.driveController == DriveControllerType.pc && state.isRunning) {
+          await _stopRobotActivity(disarm: true);
         }
         await _sendStatus();
       });
@@ -86,33 +85,50 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
         ),
       ]).listen((command) async {
         final cmd = command['cmd'];
-        final localGamepadHasPriority = state.gamepadConnected && state.driveArmed;
 
         if (cmd == 'stop') {
-          if (localGamepadHasPriority) {
+          final source = command['source']?.toString() ?? 'phone';
+          final owner = _ownerFromSource(source);
+          final currentOwner = state.driveController;
+          if (!state.isRunning || state.mode != RobotMode.drive) {
+            state.setLastRejectReason('Robot drive is not active.');
             await _sendStatus(extra: _statusEcho(command));
             return;
           }
-          await _stopRobotActivity(disarm: false);
+          if (currentOwner != DriveControllerType.none && currentOwner != owner) {
+            state.setLastRejectReason('Control owned by ${_ownerLabel(currentOwner)}.');
+            await _sendStatus(extra: _statusEcho(command));
+            return;
+          }
+          state.setLastRejectReason(null);
+          await _applyDriveCommand(left: 0, right: 0);
           await _sendStatus(extra: _statusEcho(command));
           return;
         }
         if (cmd == 'drive') {
-          if (localGamepadHasPriority) {
+          final left = (command['left'] as num?)?.toDouble() ?? 0;
+          final right = (command['right'] as num?)?.toDouble() ?? 0;
+          final source = command['source']?.toString() ?? 'phone';
+          if (!state.acceptsRemoteDrive) {
+            state.setLastRejectReason('Robot is not started.');
             await _sendStatus(extra: _statusEcho(command));
             return;
           }
-          final left = (command['left'] as num?)?.toDouble() ?? 0;
-          final right = (command['right'] as num?)?.toDouble() ?? 0;
-          final source = command['source'];
-          state.setDriveController(
-            source == 'pc' ? DriveControllerType.pc : DriveControllerType.phone,
-          );
-          await _applyDriveCommand(left: left, right: right, updateArmed: false);
+          final owner = _ownerFromSource(source);
+          final currentOwner = state.driveController;
+          if (currentOwner != DriveControllerType.none && currentOwner != owner) {
+            state.setLastRejectReason('Control owned by ${_ownerLabel(currentOwner)}.');
+            await _sendStatus(extra: _statusEcho(command));
+            return;
+          }
+          state.setDriveController(owner);
+          state.setLastRejectReason(null);
+          await _applyDriveCommand(left: left, right: right);
           await _sendStatus(extra: _statusEcho(command));
           return;
         }
         if (cmd == 'heartbeat') {
+          _syncStateFromBootstrap();
           await _sendStatus(extra: _statusEcho(command));
           return;
         }
@@ -145,16 +161,19 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> startFromUi() async {
     _syncStateFromBootstrap();
     if (!bootstrap.robotConnectionService.usbConnected) {
+      state.setVideoPhase(VideoPhase.stopped);
       await _sendStatus();
       return;
     }
 
+    state.setLastRejectReason(null);
+    state.setVideoPhase(VideoPhase.starting);
+
     switch (state.mode) {
       case RobotMode.drive:
         await bootstrap.cameraService.startPreview();
-        state.setDriveArmed(true);
+        await bootstrap.cameraService.startBackendStream(bootstrap.backendService);
         state.startRobot();
-        state.setDriveController(DriveControllerType.gamepad);
         break;
       case RobotMode.auto:
         await bootstrap.cameraService.startPreview();
@@ -164,10 +183,6 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
         state.startRobot();
         break;
       case RobotMode.track:
-        if (state.trackingPoint == null) {
-          await _sendStatus();
-          return;
-        }
         await bootstrap.cameraService.startPreview();
         await _configureBackendForMode();
         await bootstrap.backendService.startSession();
@@ -181,6 +196,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> stopFromUi() async {
     await _stopRobotActivity(disarm: true);
     await bootstrap.cameraService.stopPreview();
+    state.setVideoPhase(VideoPhase.stopped);
     await _sendStatus();
   }
 
@@ -198,18 +214,6 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     await _sendStatus();
   }
 
-  Future<void> setTrackingPoint(Offset point, Size viewSize) async {
-    state.setTrackingPoint(point);
-    await bootstrap.backendService.setTrackingPoint(
-      x: point.dx,
-      y: point.dy,
-      viewWidth: viewSize.width,
-      viewHeight: viewSize.height,
-    );
-    state.setTrackingLocked();
-    await _sendStatus();
-  }
-
   Future<void> _pushStatusTick() async {
     _syncStateFromBootstrap();
     await _sendStatus();
@@ -222,14 +226,18 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       'type': 'status',
       'mode': state.mode.name,
       'isRunning': state.isRunning,
-      'driveArmed': state.driveArmed,
       'gamepadConnected': state.gamepadConnected,
       'battery': state.telemetry.battery,
       'latency': state.telemetry.latency,
       'speed': state.telemetry.speed,
       'steering': state.telemetry.steering,
+      'voltage': state.telemetry.voltage,
+      'distance': state.telemetry.distance,
       'collecting': state.collecting,
-      'driveController': state.driveController.name,
+      'controlOwner': state.driveController.name,
+      'videoEnabled': state.videoEnabled,
+      'acceptsRemoteDrive': state.acceptsRemoteDrive,
+      'lastRejectReason': state.lastRejectReason,
       'driveSpeedMode': state.driveSpeedMode.name,
       'autoModel': state.autoModel.name,
       'autoDevice': state.autoDevice.name,
@@ -238,7 +246,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       'trackTargetType': state.trackTargetType.name,
       'trackDevice': state.trackDevice.name,
       'trackSpeedMode': state.trackSpeedMode.name,
-      'tracking': state.trackingPoint != null ? state.trackingStatus : 'none',
+      'tracking': state.mode == RobotMode.track && state.isRunning ? state.trackingStatus : 'none',
       'usbConnected': state.connection.usbConnected,
       'bluetoothConnected': state.connection.bluetoothConnected,
       'serverRunning': state.connection.videoStable,
@@ -249,7 +257,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       'backendFps': state.backendFps,
       'backendLastInferenceMs': state.backendLastInferenceMs,
       'backendModelId': state.backendModelId,
-      'previewFrameBase64': state.previewFrameBase64,
+      'previewFrameBase64': state.videoEnabled ? state.previewFrameBase64 : null,
       ...extra,
     });
   }
@@ -296,8 +304,27 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     return switch (state.trackTargetType) {
       TrackTargetType.person => 'person',
       TrackTargetType.dog => 'dog',
-      TrackTargetType.bicycle => 'bicycle',
       TrackTargetType.cat => 'cat',
+      TrackTargetType.bicycle => 'bicycle',
+      TrackTargetType.car => 'car',
+      TrackTargetType.banana => 'banana',
+    };
+  }
+
+  DriveControllerType _ownerFromSource(String source) {
+    return switch (source) {
+      'pc' => DriveControllerType.pc,
+      'phone' => DriveControllerType.phone,
+      _ => DriveControllerType.phone,
+    };
+  }
+
+  String _ownerLabel(DriveControllerType owner) {
+    return switch (owner) {
+      DriveControllerType.pc => 'PC',
+      DriveControllerType.gamepad => 'Gamepad',
+      DriveControllerType.phone => 'Phone',
+      DriveControllerType.none => 'None',
     };
   }
 
@@ -312,7 +339,6 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
         _applyDriveCommand(
           left: snapshot.suggestedLeft,
           right: snapshot.suggestedRight,
-          updateArmed: false,
         ),
       );
     }
@@ -322,7 +348,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     final nextConnection = state.connection.copyWith(
       bluetoothConnected: bootstrap.networkService.controllerConnected,
       usbConnected: bootstrap.robotConnectionService.usbConnected,
-      videoStable: bootstrap.networkService.isRunning,
+      videoStable: state.videoEnabled,
       pcConnected: bootstrap.pcLinkService.controllerConnected,
       pcLinkPort: bootstrap.pcLinkService.port,
       pcClientAddress: bootstrap.pcLinkService.lastClientAddress,
@@ -331,9 +357,8 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       state.connection = nextConnection;
       state.notifyListeners();
     }
-    if (!nextConnection.usbConnected && (state.isRunning || state.driveArmed)) {
-      state.setDriveArmed(false);
-      state.stopRobot();
+    if (!nextConnection.usbConnected && state.isRunning) {
+      unawaited(_stopRobotActivity(disarm: true));
     }
   }
 
@@ -400,17 +425,21 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     _resetGamepadInactivityTimer();
     _syncStateFromBootstrap();
 
-    if (!bootstrap.robotConnectionService.usbConnected || state.mode != RobotMode.drive || !state.driveArmed) {
+    if (!bootstrap.robotConnectionService.usbConnected || state.mode != RobotMode.drive || !state.isRunning) {
       return;
     }
 
+    final currentOwner = state.driveController;
+    if (currentOwner != DriveControllerType.none && currentOwner != DriveControllerType.gamepad) {
+      return;
+    }
     state.setDriveController(DriveControllerType.gamepad);
+    state.setLastRejectReason(null);
 
     final drive = _computeGamepadDrive(_latestAxes);
     await _applyDriveCommand(
       left: drive.left,
       right: drive.right,
-      updateArmed: false,
     );
   }
 
@@ -461,8 +490,10 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _applyDriveCommand({
     required double left,
     required double right,
-    required bool updateArmed,
   }) async {
+    if (!state.isRunning || state.mode != RobotMode.drive) {
+      return;
+    }
     final isStop = left.abs() <= 0.01 && right.abs() <= 0.01;
     final isMeaningfulChange =
         (left - _lastSentLeft).abs() > _commandDeltaThreshold ||
@@ -475,14 +506,10 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
 
     if (isStop) {
       await bootstrap.robotConnectionService.stopDrive();
-      state.stopRobot();
+      state.applyRemoteDrive(left: 0, right: 0);
     } else {
       await bootstrap.robotConnectionService.sendDrive(left, right);
       state.applyRemoteDrive(left: left, right: right);
-      state.startRobot();
-      if (updateArmed) {
-        state.setDriveArmed(true);
-      }
     }
 
     _lastSentLeft = isStop ? 0 : left;
@@ -494,18 +521,17 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     await bootstrap.cameraService.stopBackendStream();
     await bootstrap.backendService.stopSession();
     await bootstrap.robotConnectionService.stopDrive();
+    await bootstrap.cameraService.stopPreview();
     state.stopRobot();
+    state.setLastRejectReason(null);
     _lastSentLeft = 0;
     _lastSentRight = 0;
-    if (disarm) {
-      state.setDriveArmed(false);
-    }
   }
 
   void _resetGamepadInactivityTimer() {
     _gamepadInactivityTimer?.cancel();
     _gamepadInactivityTimer = Timer(_gamepadInactivityTimeout, () {
-      unawaited(_applyDriveCommand(left: 0, right: 0, updateArmed: false));
+      unawaited(_applyDriveCommand(left: 0, right: 0));
     });
   }
 

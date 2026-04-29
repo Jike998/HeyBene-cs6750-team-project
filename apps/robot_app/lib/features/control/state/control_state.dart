@@ -30,6 +30,13 @@ class ControlState extends ChangeNotifier {
   Uint8List? remotePreviewBytes;
   String gamepadDebug = 'Waiting for gamepad input';
   String? initializationError;
+  bool robotIsRunning = false;
+  String robotMode = 'drive';
+  String controlOwner = 'none';
+  bool videoEnabled = false;
+  bool acceptsRemoteDrive = false;
+  bool videoStarting = false;
+  String? lastRejectReason;
 
   double dualSteering = 0;
   double dualThrottle = 0;
@@ -44,7 +51,7 @@ class ControlState extends ChangeNotifier {
   bool stopPressed = false;
 
   bool get showCamera =>
-      remotePreviewBytes != null && remotePreviewBytes!.isNotEmpty;
+      videoEnabled && remotePreviewBytes != null && remotePreviewBytes!.isNotEmpty;
   bool get isPortraitLayout => layout.isPortrait;
 
   ControllerModeControlConfig configFor(ControllerDrivingMode mode) {
@@ -95,7 +102,57 @@ class ControlState extends ChangeNotifier {
 
   void setRemotePreviewBytes(Uint8List? value) {
     remotePreviewBytes = value;
+    if (value != null && value.isNotEmpty) {
+      videoStarting = false;
+    }
     notifyListeners();
+  }
+
+  void setRobotRuntimeStatus({
+    bool? isRunning,
+    String? mode,
+    String? controlOwner,
+    bool? videoEnabled,
+    bool? acceptsRemoteDrive,
+    bool? videoStarting,
+    String? lastRejectReason,
+  }) {
+    var changed = false;
+    if (isRunning != null && robotIsRunning != isRunning) {
+      robotIsRunning = isRunning;
+      changed = true;
+    }
+    if (mode != null && robotMode != mode) {
+      robotMode = mode;
+      changed = true;
+    }
+    if (controlOwner != null && this.controlOwner != controlOwner) {
+      this.controlOwner = controlOwner;
+      changed = true;
+    }
+    if (videoEnabled != null && this.videoEnabled != videoEnabled) {
+      this.videoEnabled = videoEnabled;
+      changed = true;
+    }
+    if (acceptsRemoteDrive != null && this.acceptsRemoteDrive != acceptsRemoteDrive) {
+      this.acceptsRemoteDrive = acceptsRemoteDrive;
+      changed = true;
+    }
+    if (videoStarting != null && this.videoStarting != videoStarting) {
+      this.videoStarting = videoStarting;
+      changed = true;
+    }
+    if (this.lastRejectReason != lastRejectReason) {
+      this.lastRejectReason = lastRejectReason;
+      changed = true;
+    }
+    if (!robotIsRunning || !this.videoEnabled) {
+      this.videoStarting = false;
+      remotePreviewBytes = null;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   void setDrivingMode(ControllerDrivingMode value) {

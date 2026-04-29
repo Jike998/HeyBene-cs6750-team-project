@@ -106,28 +106,6 @@ class AndroidRobotBackendService implements RobotBackendService {
   }
 
   @override
-  Future<void> setTrackingPoint({
-    required double x,
-    required double y,
-    required double viewWidth,
-    required double viewHeight,
-  }) async {
-    final response = await _methodChannel.invokeMethod<Map<Object?, Object?>>(
-      'setTrackingPoint',
-      {
-        'x': x,
-        'y': y,
-        'viewWidth': viewWidth,
-        'viewHeight': viewHeight,
-      },
-    );
-    final mapped = _stringMap(response);
-    if (mapped.isNotEmpty) {
-      _updateSnapshot(RobotBackendSnapshot.fromMap(mapped));
-    }
-  }
-
-  @override
   Future<void> submitCameraFrame({
     required int width,
     required int height,

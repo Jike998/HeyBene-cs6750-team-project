@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert' show base64Decode;
 import 'dart:math' as math;
 
-import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../app/controller_mode_bootstrap.dart';
@@ -46,11 +45,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   bool _usbConnected = false;
   bool _bluetoothConnected = false;
   bool _remoteUsbConnected = false;
-  bool _remoteServerRunning = false;
   bool _disposed = false;
   _ControlTransport _lastActiveTransport = _ControlTransport.none;
 
-  CameraController? get cameraController => bootstrap.cameraService.controller;
   bool get bluetoothLinked => _bluetoothConnected;
   bool get directUsbConnected => _usbConnected;
   bool get hasActiveDriveSession =>
@@ -99,7 +96,14 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
         } else {
           _stopBluetoothHeartbeat();
           _remoteUsbConnected = false;
-          _remoteServerRunning = false;
+          state.setRobotRuntimeStatus(
+            isRunning: false,
+            videoEnabled: false,
+            videoStarting: false,
+            acceptsRemoteDrive: false,
+            controlOwner: 'none',
+            lastRejectReason: null,
+          );
           if (_lastActiveTransport == _ControlTransport.bluetooth) {
             _lastActiveTransport = _ControlTransport.none;
             _lastSentLeft = 0;
@@ -176,7 +180,6 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
       } else {
         _stopBluetoothHeartbeat();
         _remoteUsbConnected = false;
-        _remoteServerRunning = false;
         state.setInitializationError(
           response['error']?.toString() ?? 'Bluetooth connect failed.',
         );
@@ -536,6 +539,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
     final transport = _currentTransport;
     if (transport == _ControlTransport.none) return;
+    if (transport == _ControlTransport.bluetooth && !state.robotIsRunning) {
+      return;
+    }
 
     switch (transport) {
       case _ControlTransport.bluetooth:
@@ -558,7 +564,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     _lastActiveTransport = transport;
     _lastSentLeft = left;
     _lastSentRight = right;
-    state.applyDriveTelemetry(left: left, right: right);
+    if (transport == _ControlTransport.usb || state.controlOwner == 'phone') {
+      state.applyDriveTelemetry(left: left, right: right);
+    }
     _syncConnectionState();
   }
 
@@ -607,7 +615,14 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     await bootstrap.linkService.disconnect();
     _bluetoothConnected = false;
     _remoteUsbConnected = false;
-    _remoteServerRunning = false;
+    state.setRobotRuntimeStatus(
+      isRunning: false,
+      videoEnabled: false,
+      videoStarting: false,
+      acceptsRemoteDrive: false,
+      controlOwner: 'none',
+      lastRejectReason: null,
+    );
     _stopBluetoothHeartbeat();
   }
 
@@ -686,7 +701,6 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     if (status['type']?.toString() != 'status') return;
 
     _remoteUsbConnected = status['usbConnected'] == true;
-    _remoteServerRunning = status['serverRunning'] == true;
 
     final latency = _resolveBluetoothLatency(status);
     state.applyHardwareTelemetry(
@@ -697,7 +711,18 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
       voltage: (status['voltage'] as num?)?.toDouble(),
       distance: (status['distance'] as num?)?.toDouble(),
     );
+    final isRunning = status['isRunning'] == true;
+    final videoEnabled = status['videoEnabled'] == true;
     final previewFrameBase64 = status['previewFrameBase64']?.toString();
+    state.setRobotRuntimeStatus(
+      isRunning: isRunning,
+      mode: status['mode']?.toString(),
+      controlOwner: status['controlOwner']?.toString(),
+      videoEnabled: videoEnabled,
+      acceptsRemoteDrive: status['acceptsRemoteDrive'] == true,
+      videoStarting: isRunning && videoEnabled && (previewFrameBase64 == null || previewFrameBase64.isEmpty),
+      lastRejectReason: status['lastRejectReason']?.toString(),
+    );
     state.setRemotePreviewBytes(
       previewFrameBase64 == null || previewFrameBase64.isEmpty
           ? null
@@ -730,7 +755,7 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     state.setConnection(
       usbConnected: _bluetoothConnected ? _remoteUsbConnected : _usbConnected,
       bluetoothConnected: _bluetoothConnected,
-      videoStable: _bluetoothConnected ? _remoteServerRunning : false,
+      videoStable: _bluetoothConnected ? state.videoEnabled : false,
     );
   }
 

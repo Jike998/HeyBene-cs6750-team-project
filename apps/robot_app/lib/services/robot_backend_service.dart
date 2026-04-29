@@ -81,7 +81,6 @@ class RobotBackendSnapshot {
     required this.mode,
     required this.device,
     required this.modelConfigured,
-    required this.trackingTargetConfigured,
     required this.frameWidth,
     required this.frameHeight,
     required this.framesProcessed,
@@ -96,6 +95,10 @@ class RobotBackendSnapshot {
     this.activeModelId,
     this.detectionLabel,
     this.detectionScore,
+    this.trackingBoxLeft,
+    this.trackingBoxTop,
+    this.trackingBoxRight,
+    this.trackingBoxBottom,
     this.collectionSessionPath,
     this.previewFrameBase64,
   });
@@ -105,7 +108,6 @@ class RobotBackendSnapshot {
   final RobotBackendMode mode;
   final RobotBackendComputeDevice device;
   final bool modelConfigured;
-  final bool trackingTargetConfigured;
   final int frameWidth;
   final int frameHeight;
   final int framesProcessed;
@@ -120,6 +122,10 @@ class RobotBackendSnapshot {
   final String? activeModelId;
   final String? detectionLabel;
   final double? detectionScore;
+  final double? trackingBoxLeft;
+  final double? trackingBoxTop;
+  final double? trackingBoxRight;
+  final double? trackingBoxBottom;
   final String? collectionSessionPath;
   final String? previewFrameBase64;
 
@@ -129,7 +135,6 @@ class RobotBackendSnapshot {
     mode: RobotBackendMode.drive,
     device: RobotBackendComputeDevice.cpu,
     modelConfigured: false,
-    trackingTargetConfigured: false,
     frameWidth: 0,
     frameHeight: 0,
     framesProcessed: 0,
@@ -144,6 +149,10 @@ class RobotBackendSnapshot {
     activeModelId: null,
     detectionLabel: null,
     detectionScore: null,
+    trackingBoxLeft: null,
+    trackingBoxTop: null,
+    trackingBoxRight: null,
+    trackingBoxBottom: null,
     collectionSessionPath: null,
     previewFrameBase64: null,
   );
@@ -155,7 +164,6 @@ class RobotBackendSnapshot {
       mode: _modeFromName(map['mode']?.toString()),
       device: _deviceFromName(map['device']?.toString()),
       modelConfigured: map['modelConfigured'] == true,
-      trackingTargetConfigured: map['trackingTargetConfigured'] == true,
       frameWidth: (map['frameWidth'] as num?)?.toInt() ?? 0,
       frameHeight: (map['frameHeight'] as num?)?.toInt() ?? 0,
       framesProcessed: (map['framesProcessed'] as num?)?.toInt() ?? 0,
@@ -170,6 +178,10 @@ class RobotBackendSnapshot {
       activeModelId: map['activeModelId']?.toString(),
       detectionLabel: map['detectionLabel']?.toString(),
       detectionScore: (map['detectionScore'] as num?)?.toDouble(),
+      trackingBoxLeft: (map['trackingBoxLeft'] as num?)?.toDouble(),
+      trackingBoxTop: (map['trackingBoxTop'] as num?)?.toDouble(),
+      trackingBoxRight: (map['trackingBoxRight'] as num?)?.toDouble(),
+      trackingBoxBottom: (map['trackingBoxBottom'] as num?)?.toDouble(),
       collectionSessionPath: map['collectionSessionPath']?.toString(),
       previewFrameBase64: map['previewFrameBase64']?.toString(),
     );
@@ -191,12 +203,6 @@ abstract class RobotBackendService {
   Future<void> startSession();
   Future<void> stopSession();
   Future<void> setCollecting(bool value);
-  Future<void> setTrackingPoint({
-    required double x,
-    required double y,
-    required double viewWidth,
-    required double viewHeight,
-  });
   Future<void> submitCameraFrame({
     required int width,
     required int height,

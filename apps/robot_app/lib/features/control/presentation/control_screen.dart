@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
-
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -33,7 +31,7 @@ class ControlScreen extends StatelessWidget {
         children: [
           _SceneBackground(
             showCamera: state.showCamera,
-            cameraController: controller.cameraController,
+            showVideoStarting: state.videoStarting,
             remotePreviewBytes: state.remotePreviewBytes,
           ),
           const _SceneOverlay(),
@@ -182,12 +180,12 @@ class ControlScreen extends StatelessWidget {
 class _SceneBackground extends StatelessWidget {
   const _SceneBackground({
     required this.showCamera,
-    required this.cameraController,
+    required this.showVideoStarting,
     required this.remotePreviewBytes,
   });
 
   final bool showCamera;
-  final CameraController? cameraController;
+  final bool showVideoStarting;
   final Uint8List? remotePreviewBytes;
 
   @override
@@ -201,28 +199,26 @@ class _SceneBackground extends StatelessWidget {
       );
     }
 
-    final previewController = cameraController;
-    if (previewController != null && previewController.value.isInitialized) {
-      final previewSize = previewController.value.previewSize;
-      if (previewSize != null) {
-        final previewAspectRatio = previewSize.height / previewSize.width;
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final screenAspectRatio =
-                constraints.maxHeight / constraints.maxWidth;
-            final scale = previewAspectRatio / screenAspectRatio;
-
-            return ClipRect(
-              child: Transform.scale(
-                scale: scale < 1 ? 1 / scale : scale,
-                child: Center(child: CameraPreview(previewController)),
-              ),
-            );
-          },
-        );
-      }
+    if (showVideoStarting) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildBackground(context),
+          const Center(
+            child: _InfoPill(
+              label: 'Video starting',
+              tone: _PillTone.neutral,
+              compact: true,
+            ),
+          ),
+        ],
+      );
     }
 
+    return _buildBackground(context);
+  }
+
+  Widget _buildBackground(BuildContext context) {
     final isPortrait =
         MediaQuery.orientationOf(context) == Orientation.portrait;
 

@@ -46,7 +46,6 @@ data class BackendSnapshot(
     val mode: String = "drive",
     val device: String = "cpu",
     val modelConfigured: Boolean = false,
-    val trackingTargetConfigured: Boolean = false,
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
     val framesProcessed: Int = 0,
@@ -61,6 +60,10 @@ data class BackendSnapshot(
     val activeModelId: String? = null,
     val detectionLabel: String? = null,
     val detectionScore: Double? = null,
+    val trackingBoxLeft: Double? = null,
+    val trackingBoxTop: Double? = null,
+    val trackingBoxRight: Double? = null,
+    val trackingBoxBottom: Double? = null,
     val collectionSessionPath: String? = null,
     val previewFrameBase64: String? = null,
 ) {
@@ -70,7 +73,6 @@ data class BackendSnapshot(
         "mode" to mode,
         "device" to device,
         "modelConfigured" to modelConfigured,
-        "trackingTargetConfigured" to trackingTargetConfigured,
         "frameWidth" to frameWidth,
         "frameHeight" to frameHeight,
         "framesProcessed" to framesProcessed,
@@ -85,6 +87,10 @@ data class BackendSnapshot(
         "activeModelId" to activeModelId,
         "detectionLabel" to detectionLabel,
         "detectionScore" to detectionScore,
+        "trackingBoxLeft" to trackingBoxLeft,
+        "trackingBoxTop" to trackingBoxTop,
+        "trackingBoxRight" to trackingBoxRight,
+        "trackingBoxBottom" to trackingBoxBottom,
         "collectionSessionPath" to collectionSessionPath,
         "previewFrameBase64" to previewFrameBase64,
         "event" to "snapshot",
@@ -180,6 +186,10 @@ class RobotBackendBridge(
                         suggestedRight = 0.0,
                         detectionLabel = null,
                         detectionScore = null,
+                        trackingBoxLeft = null,
+                        trackingBoxTop = null,
+                        trackingBoxRight = null,
+                        trackingBoxBottom = null,
                         status = "Drive ready",
                     )
                     emitSnapshot()
@@ -199,6 +209,10 @@ class RobotBackendBridge(
                         suggestedRight = 0.0,
                         detectionLabel = null,
                         detectionScore = null,
+                        trackingBoxLeft = null,
+                        trackingBoxTop = null,
+                        trackingBoxRight = null,
+                        trackingBoxBottom = null,
                         status = missingModelStatus(mode),
                     )
                     emitSnapshot()
@@ -217,6 +231,10 @@ class RobotBackendBridge(
                         suggestedRight = 0.0,
                         detectionLabel = null,
                         detectionScore = null,
+                        trackingBoxLeft = null,
+                        trackingBoxTop = null,
+                        trackingBoxRight = null,
+                        trackingBoxBottom = null,
                         status = missingAssetStatus(mode),
                     )
                     emitSnapshot()
@@ -238,6 +256,10 @@ class RobotBackendBridge(
                         suggestedRight = 0.0,
                         detectionLabel = if (model.kind == "detector") trackingTargetLabel else null,
                         detectionScore = if (model.kind == "detector") 0.0 else null,
+                        trackingBoxLeft = null,
+                        trackingBoxTop = null,
+                        trackingBoxRight = null,
+                        trackingBoxBottom = null,
                         status = readyStatus(mode),
                     )
                 } catch (_: Exception) {
@@ -252,6 +274,10 @@ class RobotBackendBridge(
                         suggestedRight = 0.0,
                         detectionLabel = null,
                         detectionScore = null,
+                        trackingBoxLeft = null,
+                        trackingBoxTop = null,
+                        trackingBoxRight = null,
+                        trackingBoxBottom = null,
                         status = loadFailedStatus(mode),
                     )
                 }
@@ -263,7 +289,7 @@ class RobotBackendBridge(
             "startSession" -> {
                 val canStart = when (snapshot.mode) {
                     "auto" -> snapshot.modelConfigured && activeInterpreter != null
-                    "track" -> snapshot.modelConfigured && activeInterpreter != null && snapshot.trackingTargetConfigured
+                    "track" -> snapshot.modelConfigured && activeInterpreter != null
                     else -> true
                 }
                 snapshot = snapshot.copy(
@@ -273,8 +299,7 @@ class RobotBackendBridge(
                     status = when {
                         !canStart && snapshot.mode == "auto" && snapshot.modelConfigured -> loadFailedStatus("auto")
                         !canStart && snapshot.mode == "auto" -> missingModelStatus("auto")
-                        !canStart && snapshot.mode == "track" && !snapshot.modelConfigured -> missingModelStatus("track")
-                        !canStart && snapshot.mode == "track" -> "Track target needed"
+                        !canStart && snapshot.mode == "track" -> missingModelStatus("track")
                         snapshot.mode == "auto" -> "Auto active"
                         snapshot.mode == "track" -> "Track active"
                         else -> "Drive active"
@@ -289,12 +314,15 @@ class RobotBackendBridge(
                     active = false,
                     suggestedLeft = 0.0,
                     suggestedRight = 0.0,
+                    trackingBoxLeft = null,
+                    trackingBoxTop = null,
+                    trackingBoxRight = null,
+                    trackingBoxBottom = null,
                     status = when (snapshot.mode) {
                         "auto" -> if (snapshot.modelConfigured) "Auto ready" else missingModelStatus("auto")
                         "track" -> when {
                             !snapshot.modelConfigured -> missingModelStatus("track")
-                            snapshot.trackingTargetConfigured -> "Track ready"
-                            else -> "Track target needed"
+                            else -> "Track ready"
                         }
                         else -> "Drive ready"
                     },
@@ -312,28 +340,6 @@ class RobotBackendBridge(
                     collecting = next,
                     collectionSessionPath = if (next) collectionSessionDir?.absolutePath else null,
                     sampleCount = if (next) snapshot.sampleCount else snapshot.sampleCount,
-                )
-                emitSnapshot()
-                result.success(snapshot.toMap())
-            }
-
-            "setTrackingPoint" -> {
-                val x = (call.argument<Number>("x") ?: 0).toFloat()
-                val y = (call.argument<Number>("y") ?: 0).toFloat()
-                val viewWidth = (call.argument<Number>("viewWidth") ?: 1).toFloat()
-                val viewHeight = (call.argument<Number>("viewHeight") ?: 1).toFloat()
-                val halfW = viewWidth * 0.12f
-                val halfH = viewHeight * 0.12f
-                trackingTarget = RectF(x - halfW, y - halfH, x + halfW, y + halfH)
-                snapshot = snapshot.copy(
-                    trackingTargetConfigured = true,
-                    detectionLabel = trackingTargetLabel,
-                    detectionScore = 0.92,
-                    status = when {
-                        snapshot.active -> "Track active"
-                        snapshot.modelConfigured -> "Track ready"
-                        else -> missingModelStatus("track")
-                    },
                 )
                 emitSnapshot()
                 result.success(snapshot.toMap())
@@ -373,6 +379,10 @@ class RobotBackendBridge(
                     suggestedRight = inference.right,
                     detectionLabel = inference.label ?: snapshot.detectionLabel,
                     detectionScore = inference.score ?: snapshot.detectionScore,
+                    trackingBoxLeft = trackingTarget?.left?.toDouble(),
+                    trackingBoxTop = trackingTarget?.top?.toDouble(),
+                    trackingBoxRight = trackingTarget?.right?.toDouble(),
+                    trackingBoxBottom = trackingTarget?.bottom?.toDouble(),
                     sampleCount = if (snapshot.collecting && snapshot.mode == "drive") snapshot.sampleCount + 1 else snapshot.sampleCount,
                     collectionSessionPath = collectionSessionDir?.absolutePath,
                     previewFrameBase64 = encodePreviewFrame(bitmap = planesToBitmap(width, height, planes)),
@@ -380,7 +390,6 @@ class RobotBackendBridge(
                         snapshot.collecting && snapshot.mode == "drive" -> "Collecting"
                         snapshot.mode == "auto" && snapshot.active -> "Auto inferencing"
                         snapshot.mode == "track" && snapshot.active -> "Track inferencing"
-                        snapshot.mode == "track" && !snapshot.trackingTargetConfigured -> "Track target needed"
                         else -> snapshot.status
                     },
                 )
@@ -470,6 +479,7 @@ class RobotBackendBridge(
         activeGpuDelegate = null
         activeModelSpec = null
         detectorLabels = emptyList()
+        trackingTarget = null
     }
 
     private fun ensureCollectionSession() {
@@ -586,6 +596,7 @@ class RobotBackendBridge(
             trackingTarget = target
             computeTrackControls(frameWidth, frameHeight)
         } else {
+            trackingTarget = null
             0.0 to 0.0
         }
         val end = System.currentTimeMillis()
@@ -710,7 +721,7 @@ class RobotBackendBridge(
     private fun readyStatus(mode: String): String {
         return when (mode) {
             "auto" -> "Auto ready"
-            "track" -> if (snapshot.trackingTargetConfigured) "Track ready" else "Track target needed"
+            "track" -> "Track ready"
             else -> if (snapshot.collecting) "Collecting" else "Drive ready"
         }
     }
