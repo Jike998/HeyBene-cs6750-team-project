@@ -1,14 +1,19 @@
 package com.openbothci.robot_app
 
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
 
-class GamepadInputBridge : EventChannel.StreamHandler {
+class GamepadInputBridge : EventChannel.StreamHandler, MethodChannel.MethodCallHandler {
     companion object {
         private const val EVENT_CHANNEL = "com.openbothci.robot_app/gamepad/events"
+        private const val METHOD_CHANNEL = "com.openbothci.robot_app/gamepad/methods"
+        private const val TAG = "RobotGamepad"
     }
 
     @Volatile
@@ -19,6 +24,22 @@ class GamepadInputBridge : EventChannel.StreamHandler {
             flutterEngine.dartExecutor.binaryMessenger,
             EVENT_CHANNEL,
         ).setStreamHandler(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            METHOD_CHANNEL,
+        ).setMethodCallHandler(this)
+    }
+
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "hasConnectedController" -> {
+                result.success(InputDevice.getDeviceIds().any { deviceId ->
+                    val device = InputDevice.getDevice(deviceId) ?: return@any false
+                    isControllerDevice(device)
+                })
+            }
+            else -> result.notImplemented()
+        }
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -30,8 +51,9 @@ class GamepadInputBridge : EventChannel.StreamHandler {
     }
 
     fun handleKeyEvent(event: KeyEvent): Boolean {
-        if (!isGamepadEvent(event.source)) return false
+        if (!isGamepadEvent(event.source) && !isLikelyControllerButton(event)) return false
 
+        Log.d(TAG, "key source=${event.source} code=${event.keyCode} action=${event.action} device=${event.device?.name}")
         emitEvent(
             mapOf(
                 "event" to "button",
@@ -79,6 +101,7 @@ class GamepadInputBridge : EventChannel.StreamHandler {
 
         if (axes.isEmpty()) return false
 
+        Log.d(TAG, "axes device=${device?.name} values=$axes")
         emitEvent(
             mapOf(
                 "event" to "axes",
@@ -99,6 +122,41 @@ class GamepadInputBridge : EventChannel.StreamHandler {
         val hasJoystick = (source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
         val hasGamepad = (source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
         return hasJoystick || hasGamepad
+    }
+
+    private fun isLikelyControllerButton(event: KeyEvent): Boolean {
+        val device = event.device ?: return false
+        if (device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC) return false
+        if (isControllerDevice(device)) return true
+        if (device.sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD) return true
+        return when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_BUTTON_X,
+            KeyEvent.KEYCODE_BUTTON_Y,
+            KeyEvent.KEYCODE_BUTTON_L1,
+            KeyEvent.KEYCODE_BUTTON_R1,
+            KeyEvent.KEYCODE_BUTTON_L2,
+            KeyEvent.KEYCODE_BUTTON_R2,
+            KeyEvent.KEYCODE_BUTTON_START,
+            KeyEvent.KEYCODE_BUTTON_SELECT,
+            KeyEvent.KEYCODE_BUTTON_MODE,
+            KeyEvent.KEYCODE_BUTTON_THUMBL,
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> true
+            else -> false
+        }
+    }
+
+    private fun isControllerDevice(device: InputDevice): Boolean {
+        val sources = device.sources
+        val hasJoystick = (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+        val hasGamepad = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        val hasDpad = (sources and InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
+        return hasJoystick || hasGamepad || hasDpad
     }
 
     private fun getCenteredAxis(

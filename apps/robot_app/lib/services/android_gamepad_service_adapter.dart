@@ -7,6 +7,9 @@ class AndroidGamepadServiceAdapter {
   static const EventChannel _eventChannel = EventChannel(
     'com.openbothci.robot_app/gamepad/events',
   );
+  static const MethodChannel _methodChannel = MethodChannel(
+    'com.openbothci.robot_app/gamepad/methods',
+  );
 
   final StreamController<Map<String, dynamic>> _eventController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -21,10 +24,22 @@ class AndroidGamepadServiceAdapter {
 
   Future<void> initialize() async {
     if (_isInitialized || !Platform.isAndroid) return;
+    await refreshConnectionState();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       _handleEvent,
     );
     _isInitialized = true;
+  }
+
+  Future<bool> refreshConnectionState() async {
+    if (!Platform.isAndroid) {
+      _connected = false;
+      return _connected;
+    }
+    _connected =
+        await _methodChannel.invokeMethod<bool>('hasConnectedController') ??
+        false;
+    return _connected;
   }
 
   Future<void> dispose() async {

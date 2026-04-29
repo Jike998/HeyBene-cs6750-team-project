@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 import 'package:async/async.dart';
@@ -25,6 +26,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   String? initializationError;
   StreamSubscription<Map<String, dynamic>>? _commandSubscription;
   StreamSubscription<Map<String, dynamic>>? _sensorSubscription;
+  StreamSubscription<bool>? _usbConnectionSubscription;
   StreamSubscription<bool>? _linkStateSubscription;
   StreamSubscription<bool>? _pcLinkStateSubscription;
   StreamSubscription<Map<String, dynamic>>? _gamepadSubscription;
@@ -40,6 +42,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       WidgetsBinding.instance.addObserver(this);
       await bootstrap.initialize();
+      await _refreshGamepadConnectionState();
       _backendSubscription = bootstrap.backendService.snapshotStream.listen(
         _handleBackendSnapshot,
       );
@@ -51,6 +54,9 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       await _sendStatus();
       _statusTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
         unawaited(_pushStatusTick());
+      });
+      _usbConnectionSubscription = bootstrap.robotConnectionService.connectionStateStream.listen((_) {
+        _syncStateFromBootstrap();
       });
       _linkStateSubscription = bootstrap.networkService.linkStateStream.listen((connected) async {
         _syncStateFromBootstrap();
@@ -215,6 +221,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _pushStatusTick() async {
+    await _refreshGamepadConnectionState();
     _syncStateFromBootstrap();
     await _sendStatus();
   }
@@ -362,6 +369,11 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _refreshGamepadConnectionState() async {
+    final connected = await bootstrap.gamepadService.refreshConnectionState();
+    state.setGamepadConnected(connected);
+  }
+
   void _handleSensor(Map<String, dynamic> sensor) {
     switch (sensor['type']) {
       case 'voltage':
@@ -408,8 +420,62 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     if (eventType == null) return;
 
     state.setGamepadConnected(true);
+    developer.log('gamepad eventType=$eventType payload=$event', name: 'RobotGamepad');
 
     if (eventType == 'button') {
+      final button = event['button']?.toString();
+      final pressed = event['pressed'] == true;
+      if (button == null || button.isEmpty) return;
+
+      final next = Map<String, double>.from(_latestAxes);
+      switch (button) {
+        case 'dpad_left':
+          next['hatX'] = pressed ? -1 : 0;
+          break;
+        case 'dpad_right':
+          next['hatX'] = pressed ? 1 : 0;
+          break;
+        case 'dpad_up':
+          next['gas'] = pressed ? 1 : 0;
+          next['hatY'] = pressed ? -1 : 0;
+          break;
+        case 'dpad_down':
+          next['brake'] = pressed ? 1 : 0;
+          next['hatY'] = pressed ? 1 : 0;
+          break;
+        case 'a':
+        case 'r1':
+        case 'r2':
+          next['gas'] = pressed ? 1 : 0;
+          next['rt'] = pressed ? 1 : 0;
+          break;
+        case 'b':
+        case 'l1':
+        case 'l2':
+          next['brake'] = pressed ? 1 : 0;
+          next['lt'] = pressed ? 1 : 0;
+          break;
+        default:
+          return;
+      }
+      _latestAxes = next;
+      _resetGamepadInactivityTimer();
+      _syncStateFromBootstrap();
+      if (!bootstrap.robotConnectionService.usbConnected || state.mode != RobotMode.drive || !state.isRunning) {
+        return;
+      }
+      final currentOwner = state.driveController;
+      if (currentOwner != DriveControllerType.none && currentOwner != DriveControllerType.gamepad) {
+        return;
+      }
+      state.setDriveController(DriveControllerType.gamepad);
+      state.setLastRejectReason(null);
+      final drive = _computeGamepadDrive(_latestAxes);
+      developer.log('button-mapped drive left=${drive.left} right=${drive.right} axes=$_latestAxes', name: 'RobotGamepad');
+      await _applyDriveCommand(
+        left: drive.left,
+        right: drive.right,
+      );
       return;
     }
 
@@ -437,6 +503,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     state.setLastRejectReason(null);
 
     final drive = _computeGamepadDrive(_latestAxes);
+    developer.log('axes-mapped drive left=${drive.left} right=${drive.right} axes=$_latestAxes', name: 'RobotGamepad');
     await _applyDriveCommand(
       left: drive.left,
       right: drive.right,
@@ -444,17 +511,16 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   _DrivePair _computeGamepadDrive(Map<String, double> axes) {
-    final steeringRaw = axes['lx'] ?? 0;
+    final steeringRaw = _preferNonZeroAxis(axes, ['lx', 'hatX']);
 
-    final rightStickY = axes['ry'] ?? axes['ryAlt'] ?? 0;
-    final rightStickThrottle = -rightStickY;
+    final leftStickThrottle = -_preferNonZeroAxis(axes, ['ly', 'hatY']);
+    final rightStickThrottle = -_preferNonZeroAxis(axes, ['ry', 'ryAlt']);
 
-    final triggerForward = _normalizedTrigger(axes['rt'] ?? axes['gas'] ?? 0);
-    final triggerReverse = _normalizedTrigger(axes['lt'] ?? axes['brake'] ?? 0);
-
-    final dualStickThrottle = _applySignedResponse(
-      _applyDeadZone(rightStickThrottle),
-      _throttleExponent,
+    final triggerForward = _normalizedTrigger(
+      _preferNonZeroAxis(axes, ['rt', 'gas']),
+    );
+    final triggerReverse = _normalizedTrigger(
+      _preferNonZeroAxis(axes, ['lt', 'brake']),
     );
 
     final triggerThrottle = _applySignedResponse(
@@ -462,7 +528,11 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       _throttleExponent,
     );
 
-    final throttle = triggerThrottle.abs() > 0.01 ? triggerThrottle : dualStickThrottle;
+    final stickThrottle = rightStickThrottle.abs() > 0.01
+        ? _applySignedResponse(rightStickThrottle, _throttleExponent)
+        : _applySignedResponse(leftStickThrottle, _throttleExponent);
+
+    final throttle = triggerThrottle.abs() > 0.01 ? triggerThrottle : stickThrottle;
     final steering = _applySignedResponse(
       _applyDeadZone(steeringRaw),
       _steeringExponent,
@@ -474,14 +544,20 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       SpeedMode.high => 1.0,
     };
     final steeringScale = switch (state.driveSpeedMode) {
-      SpeedMode.low => 0.60,
-      SpeedMode.normal => 0.76,
-      SpeedMode.high => 0.82,
+      SpeedMode.low => 0.40,
+      SpeedMode.normal => 0.60,
+      SpeedMode.high => 0.72,
     };
 
-    final left = (throttle * speedScale + steering * steeringScale)
+    final straightThrottle = throttle * speedScale;
+    if (steering.abs() <= 0.08) {
+      final forward = straightThrottle.clamp(-1.0, 1.0);
+      return _DrivePair(left: forward, right: forward);
+    }
+
+    final left = (straightThrottle + steering * steeringScale)
         .clamp(-1.0, 1.0);
-    final right = (throttle * speedScale - steering * steeringScale)
+    final right = (straightThrottle - steering * steeringScale)
         .clamp(-1.0, 1.0);
 
     return _DrivePair(left: left, right: right);
@@ -535,6 +611,22 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  double _preferNonZeroAxis(Map<String, double> axes, List<String> keys) {
+    for (final key in keys) {
+      final value = axes[key];
+      if (value != null && value.abs() > _gamepadDeadZone) {
+        return value;
+      }
+    }
+    for (final key in keys) {
+      final value = axes[key];
+      if (value != null) {
+        return value;
+      }
+    }
+    return 0;
+  }
+
   double _applyDeadZone(double value) {
     final magnitude = value.abs();
     if (magnitude <= _gamepadDeadZone) return 0;
@@ -573,6 +665,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     _gamepadInactivityTimer?.cancel();
     await _gamepadSubscription?.cancel();
     await _backendSubscription?.cancel();
+    await _usbConnectionSubscription?.cancel();
     await _linkStateSubscription?.cancel();
     await _pcLinkStateSubscription?.cancel();
     await _sensorSubscription?.cancel();

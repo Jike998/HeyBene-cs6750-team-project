@@ -341,6 +341,10 @@ class _TelemetryTrayState extends State<_TelemetryTray> {
   Widget build(BuildContext context) {
     final telemetry = widget.state.telemetry;
     final modeMetric = _modeMetric(telemetry);
+    final controllerLinkConnected =
+        widget.state.gamepadConnected ||
+        widget.connection.bluetoothConnected ||
+        widget.connection.pcConnected;
 
     return Padding(
       padding: EdgeInsets.zero,
@@ -381,7 +385,7 @@ class _TelemetryTrayState extends State<_TelemetryTray> {
                             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                             child: Row(
                               children: [
-                                _ConnectionGlyph(icon: Icons.bluetooth_rounded, connected: widget.connection.bluetoothConnected),
+                                _ConnectionGlyph(icon: Icons.bluetooth_rounded, connected: controllerLinkConnected),
                                 const SizedBox(width: 8),
                                 _ConnectionGlyph(icon: Icons.usb_rounded, connected: widget.connection.usbConnected),
                                 const SizedBox(width: 10),
@@ -1138,16 +1142,22 @@ class _SettingsSheet extends StatelessWidget {
 
     final connectionRows = [
       _SettingsRow(
-        label: 'Car USB',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+        label: 'Car Connection',
+        trailing: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            _ConnectionActionButton(
-              label: 'USB',
+            _ConnectionIconButton(
+              icon: Icons.usb_rounded,
               active: snapshot.usbConnected,
               onPressed: snapshot.usbConnected
                   ? connectionController.disconnectUsb
                   : connectionController.connectUsb,
+            ),
+            _ConnectionIconButton(
+              icon: Icons.bluetooth_rounded,
+              active: false,
+              onPressed: () => _showBleSearchPlaceholder(context),
             ),
           ],
         ),
@@ -1159,15 +1169,20 @@ class _SettingsSheet extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ConnectionActionButton(
-              label: 'Phone Link',
+            _ConnectionIconButton(
+              icon: Icons.sports_esports_rounded,
+              active: state.gamepadConnected,
+              onPressed: null,
+            ),
+            _ConnectionIconButton(
+              icon: Icons.smartphone_rounded,
               active: snapshot.bluetoothConnected,
               onPressed: snapshot.bluetoothConnected
                   ? connectionController.disconnectBluetooth
                   : connectionController.connectBluetooth,
             ),
-            _ConnectionActionButton(
-              label: snapshot.pcConnected ? 'PC Linked' : 'PC Link',
+            _ConnectionIconButton(
+              icon: Icons.computer_rounded,
               active: snapshot.pcConnected,
               onPressed: snapshot.pcConnected
                   ? connectionController.stopPcLink
@@ -1198,18 +1213,6 @@ class _SettingsSheet extends StatelessWidget {
           ),
         ),
       ],
-      const SizedBox(height: 10),
-      _SettingsRow(
-        label: 'Car BLE',
-        trailing: Text(
-          'Unavailable',
-          style: TextStyle(
-            color: FusionSurfaceTokens.textTertiary,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
       const SizedBox(height: 10),
     ];
 
@@ -1515,38 +1518,98 @@ class _SettingsRow extends StatelessWidget {
   }
 }
 
-class _ConnectionActionButton extends StatelessWidget {
-  const _ConnectionActionButton({
-    required this.label,
+void _showBleSearchPlaceholder(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (context) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: FusionSurfaceTokens.chromeFillStrong,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(0, 0, 0, 0.22),
+                  blurRadius: 26,
+                  offset: Offset(0, 18),
+                ),
+              ],
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Car BLE',
+                  style: TextStyle(
+                    color: FusionSurfaceTokens.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'BLE search results can be added here next. Actual car BLE connection is not wired yet.',
+                  style: TextStyle(
+                    color: FusionSurfaceTokens.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _ConnectionIconButton extends StatelessWidget {
+  const _ConnectionIconButton({
+    required this.icon,
     required this.active,
     required this.onPressed,
   });
 
-  final String label;
+  final IconData icon;
   final bool active;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? FusionSurfaceTokens.textPrimary : FusionSurfaceTokens.textSecondary;
+    final foreground = active ? const Color(0xFF081018) : FusionSurfaceTokens.textSecondary;
+    final fill = active ? const Color(0xFFEAF4FF) : FusionSurfaceTokens.chromeFill;
 
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 34),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: const VisualDensity(horizontal: -3, vertical: -3),
-        foregroundColor: color,
-        side: BorderSide(color: color.withValues(alpha: 0.45)),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: onPressed == null ? FusionSurfaceTokens.textTertiary : color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: onPressed == null && !active ? FusionSurfaceTokens.chromeFill : fill,
+          border: Border.all(color: active ? const Color(0xFFF8FBFF) : foreground.withValues(alpha: 0.45), width: active ? 1.4 : 1),
+          boxShadow: active
+              ? const [
+                  BoxShadow(
+                    color: Color.fromRGBO(234, 244, 255, 0.22),
+                    blurRadius: 12,
+                    offset: Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color: onPressed == null && !active ? FusionSurfaceTokens.textTertiary : foreground,
         ),
       ),
     );
