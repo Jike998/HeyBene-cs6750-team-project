@@ -49,6 +49,17 @@ class WebSocketRobotLinkServiceAdapter {
         onDone: _handleDisconnect,
         onError: (_) => _handleDisconnect(),
       );
+
+      // Send test command immediately after connection
+      await Future.delayed(const Duration(milliseconds: 100));
+      final testPayload = {
+        'cmd': 'stop',
+        'source': 'phone',
+        'seq': 1,
+        'clientTs': 1234567891,
+      };
+      channel.sink.add(jsonEncode(testPayload));
+
       return {
         'success': true,
         'targetAddress': _targetAddress,

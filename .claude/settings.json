@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Users/jiken/AppData/Local/Android/sdk/platform-tools/adb.exe devices)",
+      "Bash(/c/Users/jiken/AppData/Local/Android/sdk/platform-tools/adb.exe shell wm size)",
+      "Bash(flutter analyze *)"
+    ]
+  }
+}

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenBot Controller - Medium Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="status-indicator">
+                <span class="status-dot connected"></span>
+                <span class="status-text">Connected</span>
+            </div>
+            <h1 class="app-title">Controller</h1>
+            <button class="settings-btn">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 12.5C11.3807 12.5 12.5 11.3807 12.5 10C12.5 8.61929 11.3807 7.5 10 7.5C8.61929 7.5 7.5 8.61929 7.5 10C7.5 11.3807 8.61929 12.5 10 12.5Z" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M16.25 10C16.25 10.625 16.75 11.125 17.375 11.125C17.625 11.125 17.875 11.25 18 11.5L18.5 12.5C18.625 12.75 18.625 13 18.5 13.25L18 14.25C17.875 14.5 17.625 14.625 17.375 14.625C16.75 14.625 16.25 15.125 16.25 15.75C16.25 16 16.125 16.25 15.875 16.375L14.875 16.875C14.625 17 14.375 17 14.125 16.875L13.125 16.375C12.875 16.25 12.625 16.25 12.375 16.375C11.875 16.625 11.25 16.625 10.625 16.375C10.375 16.25 10.125 16.25 9.875 16.375L8.875 16.875C8.625 17 8.375 17 8.125 16.875L7.125 16.375C6.875 16.25 6.625 16.125 6.625 15.875C6.625 15.25 6.125 14.75 5.5 14.75C5.25 14.75 5 14.625 4.875 14.375L4.375 13.375C4.25 13.125 4.25 12.875 4.375 12.625L4.875 11.625C5 11.375 5.25 11.25 5.5 11.25C6.125 11.25 6.625 10.75 6.625 10.125C6.625 9.875 6.75 9.625 7 9.5L8 9C8.25 8.875 8.5 8.875 8.75 9L9.75 9.5C10 9.625 10.25 9.625 10.5 9.5C11 9.25 11.625 9.25 12.25 9.5C12.5 9.625 12.75 9.625 13 9.5L14 9C14.25 8.875 14.5 8.875 14.75 9L15.75 9.5C16 9.625 16.125 9.875 16.125 10.125C16.125 10.375 16.25 10.625 16.5 10.75L17.5 11.25C17.75 11.375 18 11.625 18 11.875V12.875" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Video Feed Area -->
+        <div class="video-container">
+            <div class="video-placeholder">
+                <svg class="camera-icon" width="64" height="64" viewBox="0 0 64 64" fill="none">
+                    <rect x="8" y="16" width="40" height="32" rx="4" stroke="currentColor" stroke-width="2"/>
+                    <path d="M48 24L56 20V44L48 40V24Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    <circle cx="24" cy="32" r="6" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                <p class="video-label">Robot Camera View</p>
+            </div>
+        </div>
+
+        <!-- Control Layout Switcher -->
+        <div class="mode-switcher-container">
+            <div class="mode-switcher">
+                <button class="mode-btn active" data-mode="dual">
+                    <svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <circle cx="8" cy="12" r="6" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="8" cy="12" r="2" fill="currentColor"/>
+                        <circle cx="16" cy="12" r="6" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="16" cy="12" r="2" fill="currentColor"/>
+                    </svg>
+                    <span class="mode-label">Dual</span>
+                </button>
+                <button class="mode-btn" data-mode="arrow">
+                    <svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M9 18L3 12L9 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="mode-label">Arrow</span>
+                </button>
+                <button class="mode-btn" data-mode="onehand">
+                    <svg class="mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                        <path d="M12 3V6M12 18V21M3 12H6M18 12H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span class="mode-label">One Hand</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Control Area -->
+        <div class="control-area" id="controlArea">
+            <!-- Dual Joystick Layout -->
+            <div class="control-layout dual-layout active" id="dualLayout">
+                <div class="dual-controls">
+                    <div class="control-cluster left-cluster">
+                        <div class="joystick steering-joystick" id="steeringJoystick">
+                            <div class="joystick-track"></div>
+                            <div class="joystick-handle"></div>
+                        </div>
+                        <div class="control-label">Steering</div>
+                    </div>
+                    <div class="control-cluster right-cluster">
+                        <div class="joystick throttle-joystick" id="throttleJoystick">
+                            <div class="joystick-track"></div>
+                            <div class="joystick-handle"></div>
+                        </div>
+                        <div class="control-label">Throttle</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Arrow Layout -->
+            <div class="control-layout arrow-layout" id="arrowLayout">
+                <div class="arrow-controls">
+                    <div class="arrow-cluster left-arrow-cluster">
+                        <div class="arrow-pad">
+                            <button class="arrow-btn left-arrow" id="leftArrow">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                            <button class="arrow-btn right-arrow" id="rightArrow">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="control-label">Steering</div>
+                    </div>
+                    <div class="arrow-cluster right-arrow-cluster">
+                        <div class="go-stop-pad">
+                            <button class="action-btn go-btn" id="goBtn">GO</button>
+                            <button class="action-btn stop-btn" id="stopBtn">STOP</button>
+                        </div>
+                        <div class="control-label">Throttle</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- One Hand Layout -->
+            <div class="control-layout onehand-layout" id="onehandLayout">
+                <div class="onehand-controls">
+                    <div class="onehand-joystick" id="onehandJoystick">
+                        <div class="onehand-track">
+                            <div class="track-line vertical-line"></div>
+                            <div class="track-line horizontal-line"></div>
+                        </div>
+                        <div class="onehand-handle"></div>
+                    </div>
+                    <div class="onehand-labels">
+                        <div class="axis-label top-label">Forward</div>
+                        <div class="axis-label bottom-label">Reverse</div>
+                        <div class="axis-label left-label">Left</div>
+                        <div class="axis-label right-label">Right</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode Description -->
+        <div class="mode-description" id="modeDescription">
+            <div class="description-content">
+                <h3 class="description-title">Dual Joystick</h3>
+                <p class="description-text">Independent control with two joysticks. Left for steering, right for throttle.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

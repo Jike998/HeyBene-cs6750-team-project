@@ -6,7 +6,6 @@ import 'package:flutter/widgets.dart';
 
 import '../../../app/controller_mode_bootstrap.dart';
 import '../../../services/bluetooth_robot_link_service_adapter.dart';
-import '../../../services/websocket_robot_link_service_adapter.dart';
 import '../domain/control_layout.dart';
 import '../domain/control_mode_config.dart';
 import '../domain/controller_driving_mode.dart';
@@ -21,7 +20,7 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   static const _gamepadDeadZone = 0.08;
   static const _steeringExponent = 1.32;
   static const _throttleExponent = 1.55;
-  static const _commandDeltaThreshold = 0.02;
+  static const _commandDeltaThreshold = 0.08;  // Increased for WebSocket
   static const _gamepadInactivityTimeout = Duration(milliseconds: 400);
   static const _bluetoothHeartbeatInterval = Duration(seconds: 1);
 
@@ -315,9 +314,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     if (_currentTransport == _ControlTransport.none) return;
 
     final throttleMix =
-        _applySignedResponse(throttle.clamp(-1.0, 1.0), _throttleExponent) * 0.92;
+        _applySignedResponse(throttle.clamp(-1.0, 1.0), _throttleExponent) * 0.78;
     final steeringMix =
-        _applySignedResponse(steering.clamp(-1.0, 1.0), _steeringExponent) * 0.76;
+        _applySignedResponse(steering.clamp(-1.0, 1.0), _steeringExponent) * 0.65;
     final left = (throttleMix + steeringMix).clamp(-1.0, 1.0);
     final right = (throttleMix - steeringMix).clamp(-1.0, 1.0);
 
@@ -344,10 +343,10 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     if (_currentTransport == _ControlTransport.none) return;
 
     final throttleMix = throttle >= 0
-        ? _applySignedResponse(throttle, _throttleExponent) * 0.92
-        : _applySignedResponse(throttle, _throttleExponent) * 0.46;
+        ? _applySignedResponse(throttle, _throttleExponent) * 0.78
+        : _applySignedResponse(throttle, _throttleExponent) * 0.40;
     final steeringMix =
-        _applySignedResponse(steering, _steeringExponent) * 0.76;
+        _applySignedResponse(steering, _steeringExponent) * 0.65;
     final left = (throttleMix + steeringMix).clamp(-1.0, 1.0);
     final right = (throttleMix - steeringMix).clamp(-1.0, 1.0);
 
@@ -375,9 +374,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final throttleMix =
-        _applySignedResponse(normalizedThrottle, _throttleExponent) * 0.92;
+        _applySignedResponse(normalizedThrottle, _throttleExponent) * 0.78;
     final steeringMix =
-        _applySignedResponse(normalizedSteering, _steeringExponent) * 0.76;
+        _applySignedResponse(normalizedSteering, _steeringExponent) * 0.65;
     final left = (throttleMix + steeringMix).clamp(-1.0, 1.0);
     final right = (throttleMix - steeringMix).clamp(-1.0, 1.0);
 
@@ -474,10 +473,10 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     if (_currentTransport == _ControlTransport.none) return;
 
     final throttleMix = throttle >= 0
-        ? _applySignedResponse(throttle, _throttleExponent) * 0.92
-        : _applySignedResponse(throttle, _throttleExponent) * 0.46;
+        ? _applySignedResponse(throttle, _throttleExponent) * 0.78
+        : _applySignedResponse(throttle, _throttleExponent) * 0.40;
     final steeringMix =
-        _applySignedResponse(steering, _steeringExponent) * 0.76;
+        _applySignedResponse(steering, _steeringExponent) * 0.65;
     final left = (throttleMix + steeringMix).clamp(-1.0, 1.0);
     final right = (throttleMix - steeringMix).clamp(-1.0, 1.0);
 
@@ -503,12 +502,12 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     );
 
     final left =
-        (_applySignedResponse(throttle, _throttleExponent) * 0.92 +
-                _applySignedResponse(steering, _steeringExponent) * 0.76)
+        (_applySignedResponse(throttle, _throttleExponent) * 0.78 +
+                _applySignedResponse(steering, _steeringExponent) * 0.65)
             .clamp(-1.0, 1.0);
     final right =
-        (_applySignedResponse(throttle, _throttleExponent) * 0.92 -
-                _applySignedResponse(steering, _steeringExponent) * 0.76)
+        (_applySignedResponse(throttle, _throttleExponent) * 0.78 -
+                _applySignedResponse(steering, _steeringExponent) * 0.65)
             .clamp(-1.0, 1.0);
 
     await _applyDriveCommand(left: left, right: right);
@@ -575,9 +574,7 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
     final transport = _currentTransport;
     if (transport == _ControlTransport.none) return;
-    if ((transport == _ControlTransport.bluetooth ||
-            transport == _ControlTransport.websocket) &&
-        !state.robotIsRunning) {
+    if (transport == _ControlTransport.bluetooth && !state.robotIsRunning) {
       return;
     }
 
@@ -744,9 +741,41 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _handleRobotStatus(Map<String, dynamic> status) {
     if (_disposed) return;
-    if (status['type']?.toString() != 'status') return;
 
-    _remoteUsbConnected = status['usbConnected'] == true;
+    final messageType = status['type']?.toString();
+
+    // Handle video_frame messages from Robot demo
+    if (messageType == 'video_frame') {
+      final frameData = status['data']?.toString();
+      print('📹 Received video_frame, data length: ${frameData?.length ?? 0}');
+      if (frameData != null && frameData.isNotEmpty) {
+        try {
+          state.setRemotePreviewBytes(base64Decode(frameData));
+          // Enable video display when receiving frames
+          state.setRobotRuntimeStatus(
+            isRunning: true,
+            videoEnabled: true,
+            acceptsRemoteDrive: true,
+            videoStarting: false,
+            controlOwner: 'phone',
+          );
+          print('✅ Video frame decoded and set');
+        } catch (e) {
+          print('❌ Failed to decode video frame: $e');
+        }
+      }
+      return;
+    }
+
+    // Handle status messages
+    if (messageType != 'status') {
+      print('⚠️ Unknown message type: $messageType');
+      return;
+    }
+
+    print('📊 Received status message');
+    _remoteUsbConnected = status['usbConnected'] == true ||
+                          status['usb_connected'] == true;
 
     final latency = _resolveTransportLatency(status);
     state.applyHardwareTelemetry(
@@ -757,26 +786,28 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
       voltage: (status['voltage'] as num?)?.toDouble(),
       distance: (status['distance'] as num?)?.toDouble(),
     );
-    final isRunning = status['isRunning'] == true;
-    final videoEnabled = status['videoEnabled'] == true;
+
+    // For Robot demo: assume always running if connected via WebSocket
+    final isRunning = _webSocketConnected || status['isRunning'] == true;
+    final videoEnabled = status['camera_active'] == true ||
+                         status['videoEnabled'] == true;
     final previewFrameBase64 = status['previewFrameBase64']?.toString();
+
     state.setRobotRuntimeStatus(
       isRunning: isRunning,
       mode: status['mode']?.toString(),
-      controlOwner: status['controlOwner']?.toString(),
+      controlOwner: status['controlOwner']?.toString() ?? 'phone',
       videoEnabled: videoEnabled,
-      acceptsRemoteDrive: status['acceptsRemoteDrive'] == true,
-      videoStarting:
-          isRunning &&
-          videoEnabled &&
-          (previewFrameBase64 == null || previewFrameBase64.isEmpty),
+      acceptsRemoteDrive: true,  // Always accept for WebSocket
+      videoStarting: false,
       lastRejectReason: status['lastRejectReason']?.toString(),
     );
-    state.setRemotePreviewBytes(
-      previewFrameBase64 == null || previewFrameBase64.isEmpty
-          ? null
-          : base64Decode(previewFrameBase64),
-    );
+
+    // Handle previewFrameBase64 if present (Bluetooth mode)
+    if (previewFrameBase64 != null && previewFrameBase64.isNotEmpty) {
+      state.setRemotePreviewBytes(base64Decode(previewFrameBase64));
+    }
+
     _syncConnectionState();
   }
 
@@ -806,48 +837,6 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
       videoStable:
           (_bluetoothConnected || _webSocketConnected) ? state.videoEnabled : false,
     );
-  }
-
-  void _handleSensor(Map<String, dynamic> sensor) {
-    if (_disposed) return;
-    switch (sensor['type']) {
-      case 'voltage':
-        final voltage = (sensor['value'] as num?)?.toDouble();
-        if (voltage != null) {
-          final battery = (((voltage - 6.8) / (8.4 - 6.8)) * 100)
-              .round()
-              .clamp(0, 100);
-          state.applyHardwareTelemetry(
-            voltage: double.parse(voltage.toStringAsFixed(2)),
-            battery: battery,
-          );
-        }
-        return;
-
-      case 'sonar':
-        final distance = (sensor['distance'] as num?)?.toDouble();
-        if (distance != null) {
-          state.applyHardwareTelemetry(
-            distance: double.parse(distance.toStringAsFixed(1)),
-          );
-        }
-        return;
-
-      case 'wheel':
-        final leftRpm = (sensor['left_rpm'] as num?)?.toDouble();
-        final rightRpm = (sensor['right_rpm'] as num?)?.toDouble();
-        if (leftRpm != null && rightRpm != null) {
-          final avgRpm = (leftRpm.abs() + rightRpm.abs()) / 2;
-          final normalizedSpeed = (avgRpm / 255).clamp(0.0, 1.0);
-          state.applyHardwareTelemetry(
-            speed: double.parse(normalizedSpeed.toStringAsFixed(2)),
-          );
-        }
-        return;
-
-      default:
-        return;
-    }
   }
 
   double _applyDeadZone(double value) {

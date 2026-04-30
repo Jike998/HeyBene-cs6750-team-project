@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/fusion_surface_tokens.dart';
@@ -15,7 +16,10 @@ import '../state/control_controller.dart';
 import '../state/control_state.dart';
 
 class ControlScreen extends StatelessWidget {
-  const ControlScreen({super.key, required this.onOpenRobotMode});
+  const ControlScreen({
+    super.key,
+    required this.onOpenRobotMode,
+  });
 
   final Future<void> Function() onOpenRobotMode;
 
@@ -32,42 +36,65 @@ class ControlScreen extends StatelessWidget {
         children: [
           _SceneBackground(
             showCamera: state.showCamera,
-            showVideoStarting: state.videoStarting,
+            cameraController: controller.cameraController,
             remotePreviewBytes: state.remotePreviewBytes,
           ),
           const _SceneOverlay(),
           const _TopScrim(),
-          SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 18,
-                  left: 18,
-                  right: 18,
-                  child: _TopBar(
-                    state: state,
-                    onOpenRobotMode: onOpenRobotMode,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: IgnorePointer(
+              child: Container(
+                height: 224,
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color.fromRGBO(16, 19, 28, 0.20),
+                      Color.fromRGBO(10, 12, 18, 0.72),
+                    ],
+                  ),
+                  border: Border(
+                    top: BorderSide(color: Color.fromRGBO(255, 255, 255, 0.08)),
                   ),
                 ),
-                if (state.initializationError != null)
-                  Positioned(
-                    top: state.isPortraitLayout ? 126 : 104,
-                    left: 18,
-                    child: _InfoPill(
-                      label: state.initializationError!,
-                      tone: _PillTone.warning,
-                      compact: true,
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
+          if (!state.isPortraitLayout)
+            SafeArea(
+              bottom: false,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 18,
+                    left: 18,
+                    right: 18,
+                    child: _TopBar(
+                      state: state,
+                      onOpenRobotMode: onOpenRobotMode,
+                    ),
+                  ),
+                  if (state.initializationError != null)
+                    Positioned(
+                      top: 74,
+                      left: 18,
+                      child: _InfoPill(
+                        label: state.initializationError!,
+                        tone: _PillTone.warning,
+                        compact: true,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (!state.isPortraitLayout)
             Positioned(
               left: 0,
               right: 0,
-              bottom: safePadding.bottom + 20,
+              bottom: safePadding.bottom + 26,
               child: Center(
                 child: _DrivingModeSwitcher(
                   drivingMode: state.drivingMode,
@@ -81,6 +108,7 @@ class ControlScreen extends StatelessWidget {
                 steering: state.oneHandSteering,
                 throttle: state.oneHandThrottle,
                 active: state.oneHandActive,
+                onOpenRobotMode: onOpenRobotMode,
               ),
             ),
           if (!state.isPortraitLayout)
@@ -96,35 +124,35 @@ class ControlScreen extends StatelessWidget {
                   child:
                       state.layout == ControlLayout.dual
                           ? _DualSteeringPad(
-                            key: const ValueKey('dual-left'),
-                            value: state.dualSteering,
-                            onChanged: (steering) {
-                              unawaited(
-                                controller.handleDualTouch(
-                                  steering: steering,
-                                  throttle: state.dualThrottle,
-                                ),
-                              );
-                            },
-                          )
+                              key: const ValueKey('dual-left'),
+                              value: state.dualSteering,
+                              onChanged: (steering) {
+                                unawaited(
+                                  controller.handleDualTouch(
+                                    steering: steering,
+                                    throttle: state.dualThrottle,
+                                  ),
+                                );
+                              },
+                            )
                           : _ArrowSteeringCluster(
-                            key: const ValueKey('arrow-left'),
-                            steering: state.arrowSteering,
-                            leftPressed: state.arrowLeftPressed,
-                            rightPressed: state.arrowRightPressed,
-                            onChanged: (steering, leftPressed, rightPressed) {
-                              unawaited(
-                                controller.handleArrowTouch(
-                                  steering: steering,
-                                  throttle: state.arrowThrottle,
-                                  leftPressed: leftPressed,
-                                  rightPressed: rightPressed,
-                                  goPressed: state.goPressed,
-                                  stopPressed: state.stopPressed,
-                                ),
-                              );
-                            },
-                          ),
+                              key: const ValueKey('arrow-left'),
+                              steering: state.arrowSteering,
+                              leftPressed: state.arrowLeftPressed,
+                              rightPressed: state.arrowRightPressed,
+                              onChanged: (steering, leftPressed, rightPressed) {
+                                unawaited(
+                                  controller.handleArrowTouch(
+                                    steering: steering,
+                                    throttle: state.arrowThrottle,
+                                    leftPressed: leftPressed,
+                                    rightPressed: rightPressed,
+                                    goPressed: state.goPressed,
+                                    stopPressed: state.stopPressed,
+                                  ),
+                                );
+                              },
+                            ),
                 ),
               ),
             ),
@@ -141,34 +169,34 @@ class ControlScreen extends StatelessWidget {
                   child:
                       state.layout == ControlLayout.dual
                           ? _DualThrottlePad(
-                            key: const ValueKey('dual-right'),
-                            value: state.dualThrottle,
-                            onChanged: (throttle) {
-                              unawaited(
-                                controller.handleDualTouch(
-                                  steering: state.dualSteering,
-                                  throttle: throttle,
-                                ),
-                              );
-                            },
-                          )
+                              key: const ValueKey('dual-right'),
+                              value: state.dualThrottle,
+                              onChanged: (throttle) {
+                                unawaited(
+                                  controller.handleDualTouch(
+                                    steering: state.dualSteering,
+                                    throttle: throttle,
+                                  ),
+                                );
+                              },
+                            )
                           : _PedalCluster(
-                            key: const ValueKey('arrow-right'),
-                            goPressed: state.goPressed,
-                            stopPressed: state.stopPressed,
-                            onChanged: (throttle, goPressed, stopPressed) {
-                              unawaited(
-                                controller.handleArrowTouch(
-                                  steering: state.arrowSteering,
-                                  throttle: throttle,
-                                  leftPressed: state.arrowLeftPressed,
-                                  rightPressed: state.arrowRightPressed,
-                                  goPressed: goPressed,
-                                  stopPressed: stopPressed,
-                                ),
-                              );
-                            },
-                          ),
+                              key: const ValueKey('arrow-right'),
+                              goPressed: state.goPressed,
+                              stopPressed: state.stopPressed,
+                              onChanged: (throttle, goPressed, stopPressed) {
+                                unawaited(
+                                  controller.handleArrowTouch(
+                                    steering: state.arrowSteering,
+                                    throttle: throttle,
+                                    leftPressed: state.arrowLeftPressed,
+                                    rightPressed: state.arrowRightPressed,
+                                    goPressed: goPressed,
+                                    stopPressed: stopPressed,
+                                  ),
+                                );
+                              },
+                            ),
                 ),
               ),
             ),
@@ -181,78 +209,54 @@ class ControlScreen extends StatelessWidget {
 class _SceneBackground extends StatelessWidget {
   const _SceneBackground({
     required this.showCamera,
-    required this.showVideoStarting,
+    required this.cameraController,
     required this.remotePreviewBytes,
   });
 
   final bool showCamera;
-  final bool showVideoStarting;
+  final CameraController? cameraController;
   final Uint8List? remotePreviewBytes;
 
   @override
   Widget build(BuildContext context) {
     final previewBytes = remotePreviewBytes;
     if (showCamera && previewBytes != null && previewBytes.isNotEmpty) {
-      // Rotate video 90 degrees clockwise to match camera orientation
-      return RotatedBox(
-        quarterTurns: 3, // 3 = 270° clockwise (90° counter-clockwise)
-        child: Image.memory(
-          previewBytes,
-          fit: BoxFit.contain, // Show full frame without cropping
-          gaplessPlayback: true,
-        ),
+      return Image.memory(
+        previewBytes,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
       );
     }
 
-    if (showVideoStarting) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildBackground(context),
-          const Center(
-            child: _InfoPill(
-              label: 'Video starting',
-              tone: _PillTone.neutral,
-              compact: true,
-            ),
-          ),
-        ],
-      );
-    }
+    final previewController = cameraController;
+    if (previewController != null && previewController.value.isInitialized) {
+      final previewSize = previewController.value.previewSize;
+      if (previewSize != null) {
+        final previewAspectRatio = previewSize.height / previewSize.width;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final screenAspectRatio =
+                constraints.maxHeight / constraints.maxWidth;
+            final scale = previewAspectRatio / screenAspectRatio;
 
-    return _buildBackground(context);
-  }
-
-  Widget _buildBackground(BuildContext context) {
-    final isPortrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset(
-          isPortrait
-              ? 'assets/images/controller2.png'
-              : 'assets/images/control.png',
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-        ),
-        if (isPortrait)
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color.fromRGBO(7, 10, 16, 0.26),
-                  Color.fromRGBO(7, 10, 16, 0.12),
-                  Color.fromRGBO(7, 10, 16, 0.32),
-                ],
-                stops: [0, 0.34, 1],
+            return ClipRect(
+              child: Transform.scale(
+                scale: scale < 1 ? 1 / scale : scale,
+                child: Center(child: CameraPreview(previewController)),
               ),
-            ),
-          ),
-      ],
+            );
+          },
+        );
+      }
+    }
+
+    return Transform.scale(
+      scale: 1.08,
+      child: Image.asset(
+        'assets/images/robot-road-background.jpg',
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+      ),
     );
   }
 }
@@ -321,7 +325,10 @@ class _TopScrim extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.state, required this.onOpenRobotMode});
+  const _TopBar({
+    required this.state,
+    required this.onOpenRobotMode,
+  });
 
   final ControlState state;
   final Future<void> Function() onOpenRobotMode;
@@ -330,69 +337,61 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<ControlController>();
     final bluetoothLinked = controller.bluetoothLinked;
-    final webSocketLinked = controller.webSocketLinked;
-    final linkActive = bluetoothLinked || webSocketLinked;
+    final usbLinked = controller.directUsbConnected;
+    final linkActive = bluetoothLinked || usbLinked;
     final latency = state.telemetry.latency;
-    final linkLabel = switch ((bluetoothLinked, webSocketLinked)) {
+    final linkLabel = switch ((bluetoothLinked, usbLinked)) {
       (true, _) => 'BT Linked',
-      (false, true) => 'WS Linked',
+      (false, true) => 'USB Linked',
       _ => 'Robot Link',
     };
 
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _InfoPill(
-                    label: linkLabel,
-                    tone: _PillTone.neutral,
-                    compact: true,
-                    onTap:
-                        state.linkBusy
-                            ? null
-                            : () {
-                              unawaited(
-                                _handleRobotLinkTap(context, controller),
-                              );
-                            },
-                  ),
-                  _InfoPill(
-                    label: linkActive && latency > 0 ? '${latency}ms' : '--',
-                    compact: true,
-                    tone: _PillTone.neutral,
-                  ),
-                  _InfoPill(
-                    label: state.layout.label,
-                    compact: true,
-                    tone: _PillTone.neutral,
-                  ),
-                ],
+        Expanded(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _InfoPill(
+                label: linkLabel,
+                tone: linkActive ? _PillTone.good : _PillTone.danger,
+                compact: true,
+                onTap: state.linkBusy
+                    ? null
+                    : () {
+                        unawaited(_handleRobotLinkTap(context, controller));
+                      },
               ),
-            ),
-            const SizedBox(width: 10),
-            _TopIconButton(
-              icon: Icons.tune_rounded,
-              onPressed: () {
-                unawaited(_openControllerSettings(context));
-              },
-            ),
-            const SizedBox(width: 8),
-            _TopIconButton(
-              icon: Icons.smart_toy_rounded,
-              onPressed: () {
-                unawaited(onOpenRobotMode());
-              },
-            ),
-          ],
+              const SizedBox(width: 8),
+              _InfoPill(
+                label: linkActive && latency > 0 ? '${latency}ms' : '--',
+                compact: true,
+                tone: switch ((linkActive, latency)) {
+                  (false, _) => _PillTone.danger,
+                  (true, <= 0) => _PillTone.danger,
+                  (true, <= 60) => _PillTone.good,
+                  (true, <= 120) => _PillTone.warning,
+                  _ => _PillTone.danger,
+                },
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(width: 8),
+        _TopIconButton(
+          icon: Icons.tune_rounded,
+          onPressed: () {
+            unawaited(_openControllerSettings(context));
+          },
+        ),
+        const SizedBox(width: 8),
+        _TopIconButton(
+          icon: Icons.smart_toy_rounded,
+          onPressed: () {
+            unawaited(onOpenRobotMode());
+          },
+        ),
       ],
     );
   }
@@ -427,8 +426,8 @@ class _TopBar extends StatelessWidget {
       return;
     }
 
-    if (controller.webSocketLinked) {
-      await controller.disconnectWebSocketRobotLink();
+    if (controller.directUsbConnected) {
+      await controller.toggleDirectUsbLink();
       return;
     }
 
@@ -441,22 +440,8 @@ class _TopBar extends StatelessWidget {
     if (!context.mounted || choice == null) return;
 
     switch (choice) {
-      case _RobotLinkChoice.wifi:
-        final target = await showModalBottomSheet<String>(
-          context: context,
-          backgroundColor: Colors.transparent,
-          isScrollControlled: true,
-          builder: (context) => const _WebSocketAddressSheet(),
-        );
-        if (!context.mounted || target == null || target.isEmpty) return;
-        await controller.connectWebSocketRobotLink(target);
-        return;
-      case _RobotLinkChoice.qr:
-        final target = await Navigator.of(context).push<String>(
-          MaterialPageRoute(builder: (_) => const _QrScannerScreen()),
-        );
-        if (!context.mounted || target == null || target.isEmpty) return;
-        await controller.connectWebSocketRobotLink(target);
+      case _RobotLinkChoice.usb:
+        await controller.toggleDirectUsbLink();
         return;
       case _RobotLinkChoice.bluetooth:
         final devices = await controller.getBondedRobotDevices();
@@ -476,9 +461,9 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-enum _RobotLinkChoice { bluetooth, wifi, qr }
+enum _RobotLinkChoice { bluetooth, usb }
 
-enum _PillTone { good, warning, danger, neutral }
+enum _PillTone { good, warning, danger }
 
 class _InfoPill extends StatelessWidget {
   const _InfoPill({
@@ -496,22 +481,19 @@ class _InfoPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gradientColors = switch (tone) {
-      _PillTone.good => const [Color(0x4C1A212C), Color(0x381A212C)],
-      _PillTone.warning => const [Color(0x5A4A3520), Color(0x40322216)],
-      _PillTone.danger => const [Color(0x5A4A232B), Color(0x402F181F)],
-      _PillTone.neutral => const [Color(0x661A212C), Color(0x4A1A212C)],
+      _PillTone.good => const [Color(0x8D284432), Color(0x6E1F3828)],
+      _PillTone.warning => const [Color(0x9565482B), Color(0x7348331D)],
+      _PillTone.danger => const [Color(0x97543C45), Color(0x74382730)],
     };
     final borderColor = switch (tone) {
-      _PillTone.good => FusionSurfaceTokens.chromeBorderSoft,
-      _PillTone.warning => const Color(0x36FFF2D9),
-      _PillTone.danger => const Color(0x36FFE2E5),
-      _PillTone.neutral => FusionSurfaceTokens.chromeBorderSoft,
+      _PillTone.good => const Color(0x28FFFFFF),
+      _PillTone.warning => const Color(0x2EFFF2D9),
+      _PillTone.danger => const Color(0x30FFE2E5),
     };
     final foreground = switch (tone) {
-      _PillTone.good => FusionSurfaceTokens.textPrimary,
+      _PillTone.good => const Color(0xFFF3FFF6),
       _PillTone.warning => const Color(0xFFFFF9EE),
       _PillTone.danger => const Color(0xFFFFF3F5),
-      _PillTone.neutral => FusionSurfaceTokens.textPrimary,
     };
 
     final pill = _GlassPanel(
@@ -613,7 +595,7 @@ class _RobotLinkChooserSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Use Bluetooth or Wi‑Fi WebSocket to connect this controller phone to the robot phone.',
+                  'Use Bluetooth to connect this controller phone to the robot phone. USB is fallback/debug only.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
                     fontSize: 12,
@@ -624,114 +606,19 @@ class _RobotLinkChooserSheet extends StatelessWidget {
                 _RobotLinkOptionTile(
                   icon: Icons.bluetooth_rounded,
                   title: 'Robot Phone via Bluetooth',
-                  subtitle:
-                      'Choose a paired device running the robot role.',
+                  subtitle: 'Primary remote-control path. Choose a paired Android phone running the robot role.',
                   onTap: () {
                     Navigator.of(context).pop(_RobotLinkChoice.bluetooth);
                   },
                 ),
                 const SizedBox(height: 10),
                 _RobotLinkOptionTile(
-                  icon: Icons.wifi_rounded,
-                  title: 'Robot Phone via Wi‑Fi',
-                  subtitle:
-                      'Connect to the robot phone WebSocket service with an address or scanned QR code.',
+                  icon: Icons.usb_rounded,
+                  title: 'Direct USB',
+                  subtitle: 'Fallback/debug path. Connect this controller phone directly to robot hardware through USB.',
                   onTap: () {
-                    Navigator.of(context).pop(_RobotLinkChoice.wifi);
+                    Navigator.of(context).pop(_RobotLinkChoice.usb);
                   },
-                ),
-                const SizedBox(height: 10),
-                _RobotLinkOptionTile(
-                  icon: Icons.qr_code_scanner_rounded,
-                  title: 'Scan QR Code',
-                  subtitle:
-                      'Scan the robot phone QR code and use the embedded WebSocket address.',
-                  onTap: () {
-                    Navigator.of(context).pop(_RobotLinkChoice.qr);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WebSocketAddressSheet extends StatefulWidget {
-  const _WebSocketAddressSheet();
-
-  @override
-  State<_WebSocketAddressSheet> createState() => _WebSocketAddressSheetState();
-}
-
-class _WebSocketAddressSheetState extends State<_WebSocketAddressSheet> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(14, 0, 14, math.max(14, bottomInset + 8)),
-        child: _GlassPanel(
-          borderRadius: BorderRadius.circular(28),
-          blurSigma: 28,
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xCC11161F), Color(0xC4171C26)],
-          ),
-          innerGradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0x18FFFFFF), Color(0x06FFFFFF)],
-          ),
-          borderColor: const Color(0x34FFFFFF),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Connect via Wi‑Fi',
-                  style: TextStyle(
-                    color: Color(0xFFF2F5FF),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _controller,
-                  autofocus: true,
-                  style: const TextStyle(color: Color(0xFFF5F8FF)),
-                  decoration: InputDecoration(
-                    hintText: 'ws://192.168.1.23:8765 or 192.168.1.23',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.42),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    onPressed: () {
-                      Navigator.of(context).pop(_controller.text.trim());
-                    },
-                    child: const Text('Connect'),
-                  ),
                 ),
               ],
             ),
@@ -836,16 +723,17 @@ class _BondedRobotPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sortedDevices = [...devices]..sort((left, right) {
-      final leftLastUsed = left.lastUsed;
-      final rightLastUsed = right.lastUsed;
-      if (leftLastUsed != rightLastUsed) {
-        return leftLastUsed ? -1 : 1;
-      }
-      final leftName = left.name.toLowerCase();
-      final rightName = right.name.toLowerCase();
-      return leftName.compareTo(rightName);
-    });
+    final sortedDevices = [...devices]
+      ..sort((left, right) {
+        final leftLastUsed = left.lastUsed;
+        final rightLastUsed = right.lastUsed;
+        if (leftLastUsed != rightLastUsed) {
+          return leftLastUsed ? -1 : 1;
+        }
+        final leftName = left.name.toLowerCase();
+        final rightName = right.name.toLowerCase();
+        return leftName.compareTo(rightName);
+      });
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return SafeArea(
@@ -908,10 +796,9 @@ class _BondedRobotPicker extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final device = sortedDevices[index];
                         return _BondedRobotTile(
-                          name:
-                              device.name.trim().isNotEmpty
-                                  ? device.name.trim()
-                                  : 'Robot phone',
+                          name: device.name.trim().isNotEmpty
+                              ? device.name.trim()
+                              : 'Robot phone',
                           address: device.address,
                           lastUsed: device.lastUsed,
                           onTap: () {
@@ -1059,13 +946,10 @@ class _DrivingModeSwitcher extends StatelessWidget {
           children: [
             for (final mode in ControllerDrivingMode.values)
               _ModeChip(
-                label:
-                    mode == ControllerDrivingMode.autoTracking
-                        ? 'Auto'
-                        : mode.label,
-                width: mode == ControllerDrivingMode.autoTracking ? 64 : 72,
-                height: 34,
-                fontSize: 10,
+                label: mode == ControllerDrivingMode.autoTracking ? 'Auto' : mode.label,
+                width: mode == ControllerDrivingMode.autoTracking ? 74 : 82,
+                height: 38,
+                fontSize: 11,
                 active: drivingMode == mode,
                 onTap: () {
                   unawaited(onSelected(mode));
@@ -1079,7 +963,10 @@ class _DrivingModeSwitcher extends StatelessWidget {
 }
 
 class _LayoutSwitcher extends StatelessWidget {
-  const _LayoutSwitcher({required this.layout, required this.onSelected});
+  const _LayoutSwitcher({
+    required this.layout,
+    required this.onSelected,
+  });
 
   final ControlLayout layout;
   final Future<void> Function(ControlLayout value) onSelected;
@@ -1123,21 +1010,19 @@ class _LayoutChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          gradient:
-              active
-                  ? const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x26FFFFFF), Color(0x10FFFFFF)],
-                  )
-                  : const LinearGradient(
-                    colors: [Colors.transparent, Colors.transparent],
-                  ),
+          gradient: active
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x26FFFFFF), Color(0x10FFFFFF)],
+                )
+              : const LinearGradient(
+                  colors: [Colors.transparent, Colors.transparent],
+                ),
           border: Border.all(
-            color:
-                active
-                    ? const Color(0x40FFFFFF)
-                    : FusionSurfaceTokens.chromeBorderSoft,
+            color: active
+                ? const Color(0x40FFFFFF)
+                : FusionSurfaceTokens.chromeBorderSoft,
           ),
         ),
         child: Text(
@@ -1227,8 +1112,7 @@ class _ControllerSettingsSheet extends StatelessWidget {
                   const SizedBox(height: 14),
                   _SettingsSection(
                     title: 'Layout',
-                    subtitle:
-                        'Controller-only shell presets. They do not change robot runtime mode.',
+                    subtitle: 'Controller-only shell presets. They do not change robot runtime mode.',
                     child: _LayoutSwitcher(
                       layout: state.layout,
                       onSelected: controller.setLayout,
@@ -1237,143 +1121,134 @@ class _ControllerSettingsSheet extends StatelessWidget {
                   const SizedBox(height: 14),
                   _SettingsSection(
                     title: 'Control Position',
-                    subtitle:
-                        'Editing ${state.drivingMode.label} / ${state.layout.label}',
-                    child:
-                        state.layout == ControlLayout.oneHandedPortrait
-                            ? _PositionEditor(
-                              title: 'Joystick',
-                              offset: preset.centerClusterOffset,
-                              onUp: () {
-                                controller.nudgeControlPosition(
-                                  ControlClusterSide.center,
-                                  dx: 0,
-                                  dy: -_stepY,
-                                );
-                              },
-                              onLeft: () {
-                                controller.nudgeControlPosition(
-                                  ControlClusterSide.center,
-                                  dx: -_stepX,
-                                  dy: 0,
-                                );
-                              },
-                              onRight: () {
-                                controller.nudgeControlPosition(
-                                  ControlClusterSide.center,
-                                  dx: _stepX,
-                                  dy: 0,
-                                );
-                              },
-                              onDown: () {
-                                controller.nudgeControlPosition(
-                                  ControlClusterSide.center,
-                                  dx: 0,
-                                  dy: _stepY,
-                                );
-                              },
-                              onReset: () {
-                                controller.resetControlPosition(
-                                  ControlClusterSide.center,
-                                );
-                              },
-                            )
-                            : Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _PositionEditor(
-                                        title: 'Left Control',
-                                        offset: preset.leftClusterOffset,
-                                        onUp: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.left,
-                                            dx: 0,
-                                            dy: -_stepY,
-                                          );
-                                        },
-                                        onLeft: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.left,
-                                            dx: -_stepX,
-                                            dy: 0,
-                                          );
-                                        },
-                                        onRight: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.left,
-                                            dx: _stepX,
-                                            dy: 0,
-                                          );
-                                        },
-                                        onDown: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.left,
-                                            dx: 0,
-                                            dy: _stepY,
-                                          );
-                                        },
-                                        onReset: () {
-                                          controller.resetControlPosition(
-                                            ControlClusterSide.left,
-                                          );
-                                        },
-                                      ),
+                    subtitle: 'Editing ${state.drivingMode.label} / ${state.layout.label}',
+                    child: state.layout == ControlLayout.oneHandedPortrait
+                        ? _PositionEditor(
+                            title: 'Joystick',
+                            offset: preset.centerClusterOffset,
+                            onUp: () {
+                              controller.nudgeControlPosition(
+                                ControlClusterSide.center,
+                                dx: 0,
+                                dy: -_stepY,
+                              );
+                            },
+                            onLeft: () {
+                              controller.nudgeControlPosition(
+                                ControlClusterSide.center,
+                                dx: -_stepX,
+                                dy: 0,
+                              );
+                            },
+                            onRight: () {
+                              controller.nudgeControlPosition(
+                                ControlClusterSide.center,
+                                dx: _stepX,
+                                dy: 0,
+                              );
+                            },
+                            onDown: () {
+                              controller.nudgeControlPosition(
+                                ControlClusterSide.center,
+                                dx: 0,
+                                dy: _stepY,
+                              );
+                            },
+                            onReset: () {
+                              controller.resetControlPosition(ControlClusterSide.center);
+                            },
+                          )
+                        : Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _PositionEditor(
+                                      title: 'Left Control',
+                                      offset: preset.leftClusterOffset,
+                                      onUp: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.left,
+                                          dx: 0,
+                                          dy: -_stepY,
+                                        );
+                                      },
+                                      onLeft: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.left,
+                                          dx: -_stepX,
+                                          dy: 0,
+                                        );
+                                      },
+                                      onRight: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.left,
+                                          dx: _stepX,
+                                          dy: 0,
+                                        );
+                                      },
+                                      onDown: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.left,
+                                          dx: 0,
+                                          dy: _stepY,
+                                        );
+                                      },
+                                      onReset: () {
+                                        controller.resetControlPosition(ControlClusterSide.left);
+                                      },
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _PositionEditor(
-                                        title: 'Right Control',
-                                        offset: preset.rightClusterOffset,
-                                        onUp: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.right,
-                                            dx: 0,
-                                            dy: -_stepY,
-                                          );
-                                        },
-                                        onLeft: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.right,
-                                            dx: -_stepX,
-                                            dy: 0,
-                                          );
-                                        },
-                                        onRight: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.right,
-                                            dx: _stepX,
-                                            dy: 0,
-                                          );
-                                        },
-                                        onDown: () {
-                                          controller.nudgeControlPosition(
-                                            ControlClusterSide.right,
-                                            dx: 0,
-                                            dy: _stepY,
-                                          );
-                                        },
-                                        onReset: () {
-                                          controller.resetControlPosition(
-                                            ControlClusterSide.right,
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed:
-                                        controller.resetCurrentLayoutPreset,
-                                    child: const Text('Reset Both Controls'),
                                   ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _PositionEditor(
+                                      title: 'Right Control',
+                                      offset: preset.rightClusterOffset,
+                                      onUp: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.right,
+                                          dx: 0,
+                                          dy: -_stepY,
+                                        );
+                                      },
+                                      onLeft: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.right,
+                                          dx: -_stepX,
+                                          dy: 0,
+                                        );
+                                      },
+                                      onRight: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.right,
+                                          dx: _stepX,
+                                          dy: 0,
+                                        );
+                                      },
+                                      onDown: () {
+                                        controller.nudgeControlPosition(
+                                          ControlClusterSide.right,
+                                          dx: 0,
+                                          dy: _stepY,
+                                        );
+                                      },
+                                      onReset: () {
+                                        controller.resetControlPosition(ControlClusterSide.right);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: controller.resetCurrentLayoutPreset,
+                                  child: const Text('Reset Both Controls'),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -1487,19 +1362,13 @@ class _PositionEditor extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _MiniActionButton(
-                icon: Icons.keyboard_arrow_up_rounded,
-                onTap: onUp,
-              ),
+              _MiniActionButton(icon: Icons.keyboard_arrow_up_rounded, onTap: onUp),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              _MiniActionButton(
-                icon: Icons.keyboard_arrow_left_rounded,
-                onTap: onLeft,
-              ),
+              _MiniActionButton(icon: Icons.keyboard_arrow_left_rounded, onTap: onLeft),
               const SizedBox(width: 8),
               Expanded(
                 child: _MiniActionButton(
@@ -1509,20 +1378,14 @@ class _PositionEditor extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _MiniActionButton(
-                icon: Icons.keyboard_arrow_right_rounded,
-                onTap: onRight,
-              ),
+              _MiniActionButton(icon: Icons.keyboard_arrow_right_rounded, onTap: onRight),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _MiniActionButton(
-                icon: Icons.keyboard_arrow_down_rounded,
-                onTap: onDown,
-              ),
+              _MiniActionButton(icon: Icons.keyboard_arrow_down_rounded, onTap: onDown),
             ],
           ),
         ],
@@ -1557,7 +1420,6 @@ class _MiniActionButton extends StatelessWidget {
           border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 18, color: FusionSurfaceTokens.textPrimary),
@@ -1565,7 +1427,6 @@ class _MiniActionButton extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label!,
-                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: FusionSurfaceTokens.textPrimary,
                   fontSize: 11,
@@ -1581,7 +1442,10 @@ class _MiniActionButton extends StatelessWidget {
 }
 
 class _TopIconButton extends StatelessWidget {
-  const _TopIconButton({required this.icon, required this.onPressed});
+  const _TopIconButton({
+    required this.icon,
+    required this.onPressed,
+  });
 
   final IconData icon;
   final VoidCallback onPressed;
@@ -1609,11 +1473,13 @@ class _OneHandPortraitSurface extends StatelessWidget {
     required this.steering,
     required this.throttle,
     required this.active,
+    required this.onOpenRobotMode,
   });
 
   final double steering;
   final double throttle;
   final bool active;
+  final Future<void> Function() onOpenRobotMode;
 
   @override
   Widget build(BuildContext context) {
@@ -1624,6 +1490,53 @@ class _OneHandPortraitSurface extends StatelessWidget {
 
     return Stack(
       children: [
+        Positioned(
+          top: safePadding.top + 18,
+          left: 18,
+          right: 18,
+          child: Row(
+            children: [
+              Expanded(
+                child: _InfoPill(
+                  label: 'One Hand',
+                  tone: _PillTone.good,
+                  compact: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _TopIconButton(
+                icon: Icons.tune_rounded,
+                onPressed: () {
+                  final sheetState = context.read<ControlState>();
+                  final sheetController = context.read<ControlController>();
+                  unawaited(
+                    showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
+                      builder: (sheetContext) {
+                        return MultiProvider(
+                          providers: [
+                            ChangeNotifierProvider<ControlState>.value(value: sheetState),
+                            ChangeNotifierProvider<ControlController>.value(value: sheetController),
+                          ],
+                          child: const _ControllerSettingsSheet(),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              _TopIconButton(
+                icon: Icons.smart_toy_rounded,
+                onPressed: () {
+                  unawaited(onOpenRobotMode());
+                },
+              ),
+            ],
+          ),
+        ),
         Positioned(
           left: 0,
           right: 0,
@@ -1691,8 +1604,9 @@ class _OneHandJoystickState extends State<_OneHandJoystick> {
     final center = Offset(size.width / 2, size.height / 2);
     final rawOffset = localPosition - center;
     final distance = rawOffset.distance;
-    final clampedOffset =
-        distance <= _radius ? rawOffset : rawOffset / distance * _radius;
+    final clampedOffset = distance <= _radius
+        ? rawOffset
+        : rawOffset / distance * _radius;
 
     setState(() {
       _dragActive = true;
@@ -1758,9 +1672,7 @@ class _OneHandJoystickState extends State<_OneHandJoystick> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withValues(
-                    alpha: 0.14 + intensity * 0.18,
-                  ),
+                  color: Colors.white.withValues(alpha: 0.14 + intensity * 0.18),
                 ),
               ),
             ),
@@ -1779,9 +1691,7 @@ class _OneHandJoystickState extends State<_OneHandJoystick> {
                       Color.fromRGBO(59, 69, 86, 0.94),
                     ],
                   ),
-                  border: Border.all(
-                    color: FusionSurfaceTokens.chromeBorderSoft,
-                  ),
+                  border: Border.all(color: FusionSurfaceTokens.chromeBorderSoft),
                   boxShadow: const [
                     BoxShadow(
                       color: Color.fromRGBO(0, 0, 0, 0.22),
@@ -1879,16 +1789,15 @@ class _ModeChip extends StatelessWidget {
         height: height,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          gradient:
-              active
-                  ? const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x26FFFFFF), Color(0x10FFFFFF)],
-                  )
-                  : const LinearGradient(
-                    colors: [Colors.transparent, Colors.transparent],
-                  ),
+          gradient: active
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x26FFFFFF), Color(0x10FFFFFF)],
+                )
+              : const LinearGradient(
+                  colors: [Colors.transparent, Colors.transparent],
+                ),
           border: active ? Border.all(color: const Color(0x40FFFFFF)) : null,
         ),
         alignment: Alignment.center,
@@ -1955,7 +1864,11 @@ class _DualThrottlePad extends StatelessWidget {
 }
 
 class _StickPad extends StatefulWidget {
-  const _StickPad({required this.valueX, required this.valueY, this.onChanged});
+  const _StickPad({
+    required this.valueX,
+    required this.valueY,
+    this.onChanged,
+  });
 
   final double valueX;
   final double valueY;
@@ -1981,30 +1894,24 @@ class _StickPadState extends State<_StickPad> {
 
   @override
   Widget build(BuildContext context) {
-    final intensity = math
-        .max(widget.valueX.abs(), widget.valueY.abs())
-        .clamp(0.0, 1.0);
+    final intensity = math.max(widget.valueX.abs(), widget.valueY.abs()).clamp(0.0, 1.0);
     final thumbOffset = Offset(widget.valueX * 26, widget.valueY * 26);
 
     return GestureDetector(
-      onPanStart:
-          widget.onChanged == null
-              ? null
-              : (details) {
-                final box = context.findRenderObject() as RenderBox;
-                _emit(box.globalToLocal(details.globalPosition), box.size);
-              },
-      onPanUpdate:
-          widget.onChanged == null
-              ? null
-              : (details) {
-                final box = context.findRenderObject() as RenderBox;
-                _emit(box.globalToLocal(details.globalPosition), box.size);
-              },
-      onPanEnd:
-          widget.onChanged == null ? null : (_) => widget.onChanged?.call(0, 0),
-      onPanCancel:
-          widget.onChanged == null ? null : () => widget.onChanged?.call(0, 0),
+      onPanStart: widget.onChanged == null
+          ? null
+          : (details) {
+              final box = context.findRenderObject() as RenderBox;
+              _emit(box.globalToLocal(details.globalPosition), box.size);
+            },
+      onPanUpdate: widget.onChanged == null
+          ? null
+          : (details) {
+              final box = context.findRenderObject() as RenderBox;
+              _emit(box.globalToLocal(details.globalPosition), box.size);
+            },
+      onPanEnd: widget.onChanged == null ? null : (_) => widget.onChanged?.call(0, 0),
+      onPanCancel: widget.onChanged == null ? null : () => widget.onChanged?.call(0, 0),
       child: SizedBox(
         width: 126,
         height: 126,
@@ -2039,9 +1946,7 @@ class _StickPadState extends State<_StickPad> {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      const Color(
-                        0xFF8BC6FF,
-                      ).withValues(alpha: 0.34 + intensity * 0.18),
+                      const Color(0xFF8BC6FF).withValues(alpha: 0.34 + intensity * 0.18),
                       Colors.transparent,
                     ],
                   ),
@@ -2053,9 +1958,7 @@ class _StickPadState extends State<_StickPad> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: 0.14 + intensity * 0.18,
-                    ),
+                    color: Colors.white.withValues(alpha: 0.14 + intensity * 0.18),
                   ),
                 ),
               ),
@@ -2076,9 +1979,7 @@ class _StickPadState extends State<_StickPad> {
                           Color.fromRGBO(64, 70, 84, 0.94),
                         ],
                       ),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                       boxShadow: const [
                         BoxShadow(
                           color: Color.fromRGBO(0, 0, 0, 0.28),
@@ -2111,7 +2012,7 @@ class _ArrowSteeringCluster extends StatelessWidget {
   final bool leftPressed;
   final bool rightPressed;
   final void Function(double steering, bool leftPressed, bool rightPressed)
-  onChanged;
+      onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2149,9 +2050,7 @@ class _ArrowSteeringCluster extends StatelessWidget {
                 child: _DirectionButton(
                   direction: AxisDirection.left,
                   active: leftPressed,
-                  onChanged:
-                      (pressed) =>
-                          onChanged(pressed ? -1.0 : 0.0, pressed, false),
+                  onChanged: (pressed) => onChanged(pressed ? -1.0 : 0.0, pressed, false),
                 ),
               ),
               Positioned(
@@ -2159,9 +2058,7 @@ class _ArrowSteeringCluster extends StatelessWidget {
                 child: _DirectionButton(
                   direction: AxisDirection.right,
                   active: rightPressed,
-                  onChanged:
-                      (pressed) =>
-                          onChanged(pressed ? 1.0 : 0.0, false, pressed),
+                  onChanged: (pressed) => onChanged(pressed ? 1.0 : 0.0, false, pressed),
                 ),
               ),
               Container(
@@ -2290,7 +2187,7 @@ class _PedalCluster extends StatelessWidget {
   final bool goPressed;
   final bool stopPressed;
   final void Function(double throttle, bool goPressed, bool stopPressed)
-  onChanged;
+      onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2837,128 +2734,4 @@ class _BrakeChevronPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _QrScannerScreen extends StatefulWidget {
-  const _QrScannerScreen();
-
-  @override
-  State<_QrScannerScreen> createState() => _QrScannerScreenState();
-}
-
-class _QrScannerScreenState extends State<_QrScannerScreen> {
-  MobileScannerController? _controller;
-  bool _hasScanned = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = MobileScannerController(
-      detectionSpeed: DetectionSpeed.normal,
-      facing: CameraFacing.back,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  void _handleDetection(BarcodeCapture capture) {
-    if (_hasScanned) return;
-
-    final barcode = capture.barcodes.firstOrNull;
-    if (barcode == null || barcode.rawValue == null) return;
-
-    final value = barcode.rawValue!.trim();
-    if (value.isEmpty) return;
-
-    _hasScanned = true;
-    Navigator.of(context).pop(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text(
-          'Scan QR Code',
-          style: TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flash_on, color: Colors.white),
-            onPressed: () => _controller?.toggleTorch(),
-          ),
-        ],
-      ),
-      body: _controller == null
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          : Stack(
-              children: [
-                MobileScanner(
-                  controller: _controller!,
-                  onDetect: _handleDetection,
-                  errorBuilder: (context, error, child) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.red, size: 48),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Camera error: ${error.errorCode}',
-                            style: const TextStyle(color: Colors.white),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-                Center(
-                  child: Container(
-                    width: 250,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 40,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Point camera at robot QR code',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
 }
