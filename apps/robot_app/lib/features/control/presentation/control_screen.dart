@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/fusion_surface_tokens.dart';
@@ -325,12 +326,12 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.read<ControlController>();
     final bluetoothLinked = controller.bluetoothLinked;
-    final usbLinked = controller.directUsbConnected;
-    final linkActive = bluetoothLinked || usbLinked;
+    final webSocketLinked = controller.webSocketLinked;
+    final linkActive = bluetoothLinked || webSocketLinked;
     final latency = state.telemetry.latency;
-    final linkLabel = switch ((bluetoothLinked, usbLinked)) {
+    final linkLabel = switch ((bluetoothLinked, webSocketLinked)) {
       (true, _) => 'BT Linked',
-      (false, true) => 'USB Linked',
+      (false, true) => 'WS Linked',
       _ => 'Robot Link',
     };
 
@@ -388,12 +389,6 @@ class _TopBar extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        Center(
-          child: _DrivingModeSwitcher(
-            drivingMode: state.drivingMode,
-            onSelected: controller.setDrivingMode,
-          ),
-        ),
       ],
     );
   }
@@ -428,8 +423,8 @@ class _TopBar extends StatelessWidget {
       return;
     }
 
-    if (controller.directUsbConnected) {
-      await controller.toggleDirectUsbLink();
+    if (controller.webSocketLinked) {
+      await controller.disconnectWebSocketRobotLink();
       return;
     }
 
@@ -442,8 +437,22 @@ class _TopBar extends StatelessWidget {
     if (!context.mounted || choice == null) return;
 
     switch (choice) {
-      case _RobotLinkChoice.usb:
-        await controller.toggleDirectUsbLink();
+      case _RobotLinkChoice.wifi:
+        final target = await showModalBottomSheet<String>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => const _WebSocketAddressSheet(),
+        );
+        if (!context.mounted || target == null || target.isEmpty) return;
+        await controller.connectWebSocketRobotLink(target);
+        return;
+      case _RobotLinkChoice.qr:
+        final target = await Navigator.of(context).push<String>(
+          MaterialPageRoute(builder: (_) => const _QrScannerScreen()),
+        );
+        if (!context.mounted || target == null || target.isEmpty) return;
+        await controller.connectWebSocketRobotLink(target);
         return;
       case _RobotLinkChoice.bluetooth:
         final devices = await controller.getBondedRobotDevices();
@@ -463,7 +472,7 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-enum _RobotLinkChoice { bluetooth, usb }
+enum _RobotLinkChoice { bluetooth, wifi, qr }
 
 enum _PillTone { good, warning, danger, neutral }
 
@@ -600,7 +609,7 @@ class _RobotLinkChooserSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Use Bluetooth to connect this controller phone to the robot phone. USB is fallback/debug only.',
+                  'Use Bluetooth or Wi‑Fi WebSocket to connect this controller phone to the robot phone.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
                     fontSize: 12,
@@ -612,20 +621,113 @@ class _RobotLinkChooserSheet extends StatelessWidget {
                   icon: Icons.bluetooth_rounded,
                   title: 'Robot Phone via Bluetooth',
                   subtitle:
-                      'Primary remote-control path. Choose a paired Android phone running the robot role.',
+                      'Choose a paired device running the robot role.',
                   onTap: () {
                     Navigator.of(context).pop(_RobotLinkChoice.bluetooth);
                   },
                 ),
                 const SizedBox(height: 10),
                 _RobotLinkOptionTile(
-                  icon: Icons.usb_rounded,
-                  title: 'Direct USB',
+                  icon: Icons.wifi_rounded,
+                  title: 'Robot Phone via Wi‑Fi',
                   subtitle:
-                      'Fallback/debug path. Connect this controller phone directly to robot hardware through USB.',
+                      'Connect to the robot phone WebSocket service with an address or scanned QR code.',
                   onTap: () {
-                    Navigator.of(context).pop(_RobotLinkChoice.usb);
+                    Navigator.of(context).pop(_RobotLinkChoice.wifi);
                   },
+                ),
+                const SizedBox(height: 10),
+                _RobotLinkOptionTile(
+                  icon: Icons.qr_code_scanner_rounded,
+                  title: 'Scan QR Code',
+                  subtitle:
+                      'Scan the robot phone QR code and use the embedded WebSocket address.',
+                  onTap: () {
+                    Navigator.of(context).pop(_RobotLinkChoice.qr);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WebSocketAddressSheet extends StatefulWidget {
+  const _WebSocketAddressSheet();
+
+  @override
+  State<_WebSocketAddressSheet> createState() => _WebSocketAddressSheetState();
+}
+
+class _WebSocketAddressSheetState extends State<_WebSocketAddressSheet> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, 0, 14, math.max(14, bottomInset + 8)),
+        child: _GlassPanel(
+          borderRadius: BorderRadius.circular(28),
+          blurSigma: 28,
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xCC11161F), Color(0xC4171C26)],
+          ),
+          innerGradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x18FFFFFF), Color(0x06FFFFFF)],
+          ),
+          borderColor: const Color(0x34FFFFFF),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Connect via Wi‑Fi',
+                  style: TextStyle(
+                    color: Color(0xFFF2F5FF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  style: const TextStyle(color: Color(0xFFF5F8FF)),
+                  decoration: InputDecoration(
+                    hintText: 'ws://192.168.1.23:8765 or 192.168.1.23',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.42),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(_controller.text.trim());
+                    },
+                    child: const Text('Connect'),
+                  ),
                 ),
               ],
             ),

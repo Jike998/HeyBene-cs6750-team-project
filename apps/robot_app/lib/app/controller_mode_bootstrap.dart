@@ -1,29 +1,29 @@
 import '../services/android_gamepad_service_adapter.dart';
 import '../services/bluetooth_robot_link_service_adapter.dart';
 import '../services/openbene_camera_service_adapter.dart';
-import '../services/openbene_robot_connection_adapter.dart';
+import '../services/websocket_robot_link_service_adapter.dart';
 
 class ControllerModeBootstrap {
   ControllerModeBootstrap({
     OpenBeneCameraServiceAdapter? cameraService,
-    OpenBeneRobotConnectionAdapter? robotConnectionService,
     AndroidGamepadServiceAdapter? gamepadService,
     BluetoothRobotLinkServiceAdapter? linkService,
+    WebSocketRobotLinkServiceAdapter? webSocketLinkService,
   })  : cameraService = cameraService ?? OpenBeneCameraServiceAdapter(),
-        robotConnectionService =
-            robotConnectionService ?? OpenBeneRobotConnectionAdapter(),
         gamepadService = gamepadService ?? AndroidGamepadServiceAdapter(),
-        linkService = linkService ?? BluetoothRobotLinkServiceAdapter();
+        linkService = linkService ?? BluetoothRobotLinkServiceAdapter(),
+        webSocketLinkService =
+            webSocketLinkService ?? WebSocketRobotLinkServiceAdapter();
 
   final OpenBeneCameraServiceAdapter cameraService;
-  final OpenBeneRobotConnectionAdapter robotConnectionService;
   final AndroidGamepadServiceAdapter gamepadService;
   final BluetoothRobotLinkServiceAdapter linkService;
+  final WebSocketRobotLinkServiceAdapter webSocketLinkService;
 
   Future<void> initializeCore() async {
-    await robotConnectionService.initialize();
     await gamepadService.initialize();
     await linkService.initialize();
+    await webSocketLinkService.initialize();
   }
 
   Future<void> initializeCamera() async {
@@ -34,6 +34,6 @@ class ControllerModeBootstrap {
     await cameraService.dispose();
     await gamepadService.dispose();
     await linkService.dispose();
-    await robotConnectionService.disconnect();
+    await webSocketLinkService.dispose();
   }
 }

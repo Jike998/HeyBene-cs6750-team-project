@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../app/controller_mode_bootstrap.dart';
 import '../../../services/bluetooth_robot_link_service_adapter.dart';
+import '../../../services/websocket_robot_link_service_adapter.dart';
 import '../domain/control_layout.dart';
 import '../domain/control_mode_config.dart';
 import '../domain/controller_driving_mode.dart';
@@ -23,17 +24,17 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   static const _commandDeltaThreshold = 0.02;
   static const _gamepadInactivityTimeout = Duration(milliseconds: 400);
   static const _bluetoothHeartbeatInterval = Duration(seconds: 1);
-  static const _localUsbLatencyMs = 12;
 
   final ControllerModeBootstrap bootstrap;
   final ControlState state;
 
   StreamSubscription<Map<String, dynamic>>? _gamepadSubscription;
-  StreamSubscription<Map<String, dynamic>>? _sensorSubscription;
-  StreamSubscription<bool>? _usbConnectionSubscription;
   StreamSubscription<bool>? _bluetoothLinkSubscription;
+  StreamSubscription<bool>? _webSocketLinkSubscription;
   StreamSubscription<Map<String, dynamic>>? _robotStatusSubscription;
+  StreamSubscription<Map<String, dynamic>>? _webSocketStatusSubscription;
   StreamSubscription<String>? _robotLinkErrorSubscription;
+  StreamSubscription<String>? _webSocketErrorSubscription;
   Timer? _gamepadInactivityTimer;
   Timer? _bluetoothHeartbeatTimer;
 
@@ -42,14 +43,15 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   double _lastSentLeft = 0;
   double _lastSentRight = 0;
   int _nextSequence = 1;
-  bool _usbConnected = false;
   bool _bluetoothConnected = false;
+  bool _webSocketConnected = false;
+  String? _webSocketTarget;
   bool _remoteUsbConnected = false;
   bool _disposed = false;
   _ControlTransport _lastActiveTransport = _ControlTransport.none;
 
   bool get bluetoothLinked => _bluetoothConnected;
-  bool get directUsbConnected => _usbConnected;
+  bool get webSocketLinked => _webSocketConnected;
   bool get hasActiveDriveSession =>
       _lastActiveTransport != _ControlTransport.none ||
       _lastSentLeft.abs() > 0.01 ||
@@ -65,24 +67,9 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await bootstrap.initializeCore();
 
-      _usbConnected = bootstrap.robotConnectionService.usbConnected;
       _bluetoothConnected = bootstrap.linkService.connected;
-
-      final connectionStream =
-          bootstrap.robotConnectionService.connectionStateStream;
-      _usbConnectionSubscription = connectionStream.listen((connected) async {
-        _usbConnected = connected;
-        if (!connected && _lastActiveTransport == _ControlTransport.usb) {
-          await _stopDrive(resetVisuals: true);
-        }
-        _applyPreferredLatency();
-        _syncConnectionState();
-      });
-
-      final sensorStream = bootstrap.robotConnectionService.sensorStream;
-      if (sensorStream != null) {
-        _sensorSubscription = sensorStream.listen(_handleSensor);
-      }
+      _webSocketConnected = bootstrap.webSocketLinkService.connected;
+      _webSocketTarget = bootstrap.webSocketLinkService.targetAddress;
 
       _bluetoothLinkSubscription = bootstrap.linkService.linkStateStream.listen((
         connected,
@@ -115,9 +102,39 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
         _syncConnectionState();
       });
 
+      _webSocketLinkSubscription = bootstrap.webSocketLinkService.linkStateStream
+          .listen((connected) async {
+            _webSocketConnected = connected;
+            _webSocketTarget = bootstrap.webSocketLinkService.targetAddress;
+            if (connected) {
+              state.applyHardwareTelemetry(latency: 0);
+              state.setInitializationError(null);
+            } else {
+              _remoteUsbConnected = false;
+              state.setRobotRuntimeStatus(
+                isRunning: false,
+                videoEnabled: false,
+                videoStarting: false,
+                acceptsRemoteDrive: false,
+                controlOwner: 'none',
+                lastRejectReason: null,
+              );
+              if (_lastActiveTransport == _ControlTransport.websocket) {
+                _lastActiveTransport = _ControlTransport.none;
+                _lastSentLeft = 0;
+                _lastSentRight = 0;
+                state.resetVisuals();
+              }
+            }
+            _applyPreferredLatency();
+            _syncConnectionState();
+          });
+
       _robotStatusSubscription = bootstrap.linkService.statusStream.listen(
         _handleRobotStatus,
       );
+      _webSocketStatusSubscription =
+          bootstrap.webSocketLinkService.statusStream.listen(_handleRobotStatus);
 
       _robotLinkErrorSubscription = bootstrap.linkService.errorStream.listen((
         message,
@@ -126,6 +143,12 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
           state.setInitializationError(message);
         }
       });
+      _webSocketErrorSubscription = bootstrap.webSocketLinkService.errorStream
+          .listen((message) {
+            if (message.isNotEmpty) {
+              state.setInitializationError(message);
+            }
+          });
 
       _gamepadSubscription = bootstrap.gamepadService.events.listen((event) {
         unawaited(_handleGamepadEvent(event));
@@ -165,8 +188,8 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
     state.setLinkBusy(true);
     try {
-      if (_usbConnected) {
-        await _disconnectDirectUsbInternal(resetVisuals: true);
+      if (_webSocketConnected) {
+        await _disconnectWebSocketRobotLinkInternal(resetVisuals: true);
       }
 
       final response = await bootstrap.linkService.connect(address);
@@ -206,30 +229,43 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> toggleDirectUsbLink() async {
+  Future<void> connectWebSocketRobotLink(String target) async {
     if (state.linkBusy) return;
 
     state.setLinkBusy(true);
     try {
-      if (_usbConnected) {
-        await _disconnectDirectUsbInternal(resetVisuals: true);
-        state.setInitializationError(null);
-      } else {
-        if (_bluetoothConnected) {
-          await _disconnectBluetoothRobotLinkInternal(resetVisuals: true);
-        }
-
-        await bootstrap.robotConnectionService.connectUsb();
-        _usbConnected = bootstrap.robotConnectionService.usbConnected;
-        if (_usbConnected) {
-          state.setInitializationError(null);
-        } else {
-          state.setInitializationError(
-            'USB connect failed. Check the cable, OTG adapter, and USB permission.',
-          );
-        }
+      if (_bluetoothConnected) {
+        await _disconnectBluetoothRobotLinkInternal(resetVisuals: true);
       }
 
+      final response = await bootstrap.webSocketLinkService.connect(target);
+      _webSocketConnected = bootstrap.webSocketLinkService.connected;
+      _webSocketTarget = bootstrap.webSocketLinkService.targetAddress;
+
+      if (_webSocketConnected && response['success'] != false) {
+        state.applyHardwareTelemetry(latency: 0);
+        state.setInitializationError(null);
+      } else {
+        _remoteUsbConnected = false;
+        state.setInitializationError(
+          response['error']?.toString() ?? 'WebSocket connect failed.',
+        );
+      }
+
+      _applyPreferredLatency();
+      _syncConnectionState();
+    } finally {
+      state.setLinkBusy(false);
+    }
+  }
+
+  Future<void> disconnectWebSocketRobotLink() async {
+    if (state.linkBusy) return;
+
+    state.setLinkBusy(true);
+    try {
+      await _disconnectWebSocketRobotLinkInternal(resetVisuals: true);
+      state.setInitializationError(null);
       _applyPreferredLatency();
       _syncConnectionState();
     } finally {
@@ -539,32 +575,19 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
     final transport = _currentTransport;
     if (transport == _ControlTransport.none) return;
-    if (transport == _ControlTransport.bluetooth && !state.robotIsRunning) {
+    if ((transport == _ControlTransport.bluetooth ||
+            transport == _ControlTransport.websocket) &&
+        !state.robotIsRunning) {
       return;
     }
 
-    switch (transport) {
-      case _ControlTransport.bluetooth:
-        final sent = await _sendRemoteDrive(left: left, right: right);
-        if (!sent || _disposed) return;
-        break;
-      case _ControlTransport.usb:
-        await bootstrap.robotConnectionService.sendDrive(left, right);
-        _usbConnected = bootstrap.robotConnectionService.usbConnected;
-        if (!_usbConnected || _disposed) {
-          _applyPreferredLatency();
-          _syncConnectionState();
-          return;
-        }
-        break;
-      case _ControlTransport.none:
-        return;
-    }
+    final sent = await _sendRemoteDrive(left: left, right: right);
+    if (!sent || _disposed) return;
 
     _lastActiveTransport = transport;
     _lastSentLeft = left;
     _lastSentRight = right;
-    if (transport == _ControlTransport.usb || state.controlOwner == 'phone') {
+    if (state.controlOwner == 'phone') {
       state.applyDriveTelemetry(left: left, right: right);
     }
     _syncConnectionState();
@@ -594,13 +617,8 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _stopActiveTransport() async {
     switch (_lastActiveTransport) {
       case _ControlTransport.bluetooth:
+      case _ControlTransport.websocket:
         await _sendRemoteStop();
-        break;
-      case _ControlTransport.usb:
-        if (_usbConnected) {
-          await bootstrap.robotConnectionService.stopDrive();
-          _usbConnected = bootstrap.robotConnectionService.usbConnected;
-        }
         break;
       case _ControlTransport.none:
         break;
@@ -626,12 +644,22 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     _stopBluetoothHeartbeat();
   }
 
-  Future<void> _disconnectDirectUsbInternal({
+  Future<void> _disconnectWebSocketRobotLinkInternal({
     required bool resetVisuals,
   }) async {
     await _stopDrive(resetVisuals: resetVisuals);
-    await bootstrap.robotConnectionService.disconnect();
-    _usbConnected = false;
+    await bootstrap.webSocketLinkService.disconnect();
+    _webSocketConnected = false;
+    _webSocketTarget = null;
+    _remoteUsbConnected = false;
+    state.setRobotRuntimeStatus(
+      isRunning: false,
+      videoEnabled: false,
+      videoStarting: false,
+      acceptsRemoteDrive: false,
+      controlOwner: 'none',
+      lastRejectReason: null,
+    );
   }
 
   Future<bool> _sendRemoteDrive({
@@ -659,21 +687,39 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     Map<String, dynamic> payload, {
     bool setErrorOnFailure = true,
   }) async {
-    if (!_bluetoothConnected || _disposed) return false;
+    if (_disposed) return false;
 
-    final sent = await bootstrap.linkService.sendPayload({
+    final transport = _currentTransport;
+    final payloadWithMeta = {
       ...payload,
+      'source': 'phone',
       'seq': _nextSequence++,
       'clientTs': DateTime.now().millisecondsSinceEpoch,
-    });
+    };
+
+    final bool sent;
+    switch (transport) {
+      case _ControlTransport.bluetooth:
+        sent = await bootstrap.linkService.sendPayload(payloadWithMeta);
+        break;
+      case _ControlTransport.websocket:
+        sent = await bootstrap.webSocketLinkService.sendPayload(payloadWithMeta);
+        break;
+      case _ControlTransport.none:
+        return false;
+    }
 
     if (!sent) {
       _bluetoothConnected = bootstrap.linkService.connected;
+      _webSocketConnected = bootstrap.webSocketLinkService.connected;
+      _webSocketTarget = bootstrap.webSocketLinkService.targetAddress;
       _applyPreferredLatency();
       _syncConnectionState();
       if (setErrorOnFailure) {
         state.setInitializationError(
-          'Bluetooth send failed. Reconnect the robot phone.',
+          transport == _ControlTransport.bluetooth
+              ? 'Bluetooth send failed. Reconnect the robot phone.'
+              : 'WebSocket send failed. Reconnect the robot phone.',
         );
       }
     }
@@ -702,7 +748,7 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
     _remoteUsbConnected = status['usbConnected'] == true;
 
-    final latency = _resolveBluetoothLatency(status);
+    final latency = _resolveTransportLatency(status);
     state.applyHardwareTelemetry(
       battery: (status['battery'] as num?)?.toInt(),
       latency: latency,
@@ -720,7 +766,10 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
       controlOwner: status['controlOwner']?.toString(),
       videoEnabled: videoEnabled,
       acceptsRemoteDrive: status['acceptsRemoteDrive'] == true,
-      videoStarting: isRunning && videoEnabled && (previewFrameBase64 == null || previewFrameBase64.isEmpty),
+      videoStarting:
+          isRunning &&
+          videoEnabled &&
+          (previewFrameBase64 == null || previewFrameBase64.isEmpty),
       lastRejectReason: status['lastRejectReason']?.toString(),
     );
     state.setRemotePreviewBytes(
@@ -731,31 +780,31 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     _syncConnectionState();
   }
 
-  int? _resolveBluetoothLatency(Map<String, dynamic> status) {
+  int? _resolveTransportLatency(Map<String, dynamic> status) {
     final echoedAt = (status['echoTs'] as num?)?.toInt();
     if (echoedAt != null && echoedAt > 0) {
-      final roundTripMs =
-          DateTime.now().millisecondsSinceEpoch - echoedAt;
+      final roundTripMs = DateTime.now().millisecondsSinceEpoch - echoedAt;
       return roundTripMs.clamp(0, 60000).toInt();
     }
     return (status['latency'] as num?)?.toInt();
   }
 
   void _applyPreferredLatency() {
-    if (_bluetoothConnected) {
+    if (_bluetoothConnected || _webSocketConnected) {
       return;
     }
-    state.applyHardwareTelemetry(
-      latency: _usbConnected ? _localUsbLatencyMs : 0,
-    );
+    state.applyHardwareTelemetry(latency: 0);
   }
 
   void _syncConnectionState() {
     if (_disposed) return;
     state.setConnection(
-      usbConnected: _bluetoothConnected ? _remoteUsbConnected : _usbConnected,
+      usbConnected: _remoteUsbConnected,
       bluetoothConnected: _bluetoothConnected,
-      videoStable: _bluetoothConnected ? state.videoEnabled : false,
+      webSocketConnected: _webSocketConnected,
+      webSocketTarget: _webSocketTarget,
+      videoStable:
+          (_bluetoothConnected || _webSocketConnected) ? state.videoEnabled : false,
     );
   }
 
@@ -845,7 +894,7 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
 
   _ControlTransport get _currentTransport {
     if (_bluetoothConnected) return _ControlTransport.bluetooth;
-    if (_usbConnected) return _ControlTransport.usb;
+    if (_webSocketConnected) return _ControlTransport.websocket;
     return _ControlTransport.none;
   }
 
@@ -856,11 +905,12 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
     _gamepadInactivityTimer?.cancel();
     _stopBluetoothHeartbeat();
     await _gamepadSubscription?.cancel();
-    await _sensorSubscription?.cancel();
-    await _usbConnectionSubscription?.cancel();
     await _bluetoothLinkSubscription?.cancel();
+    await _webSocketLinkSubscription?.cancel();
     await _robotStatusSubscription?.cancel();
+    await _webSocketStatusSubscription?.cancel();
     await _robotLinkErrorSubscription?.cancel();
+    await _webSocketErrorSubscription?.cancel();
 
     await _stopActiveTransport();
     _disposed = true;
@@ -868,4 +918,4 @@ class ControlController extends ChangeNotifier with WidgetsBindingObserver {
   }
 }
 
-enum _ControlTransport { none, usb, bluetooth }
+enum _ControlTransport { none, bluetooth, websocket }

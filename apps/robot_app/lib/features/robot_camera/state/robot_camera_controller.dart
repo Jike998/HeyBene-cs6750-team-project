@@ -51,12 +51,14 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       await _configureBackendForMode();
       initialized = true;
       _syncStateFromBootstrap();
+      await _syncPreviewForUsbConnection(bootstrap.robotConnectionService.usbConnected);
       await _sendStatus();
       _statusTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
         unawaited(_pushStatusTick());
       });
-      _usbConnectionSubscription = bootstrap.robotConnectionService.connectionStateStream.listen((_) {
+      _usbConnectionSubscription = bootstrap.robotConnectionService.connectionStateStream.listen((connected) {
         _syncStateFromBootstrap();
+        unawaited(_syncPreviewForUsbConnection(connected));
       });
       _linkStateSubscription = bootstrap.networkService.linkStateStream.listen((connected) async {
         _syncStateFromBootstrap();
@@ -200,9 +202,10 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> stopFromUi() async {
-    await _stopRobotActivity(disarm: true);
-    await bootstrap.cameraService.stopPreview();
-    state.setVideoPhase(VideoPhase.stopped);
+    await _stopRobotActivity(
+      disarm: true,
+      preservePreviewIfUsbConnected: true,
+    );
     await _sendStatus();
   }
 
@@ -214,7 +217,10 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> applyModeFromUi(RobotMode mode) async {
     if (state.mode == mode) return;
-    await _stopRobotActivity(disarm: true);
+    await _stopRobotActivity(
+      disarm: true,
+      preservePreviewIfUsbConnected: true,
+    );
     state.setMode(mode);
     await _configureBackendForMode();
     await _sendStatus();
@@ -229,7 +235,7 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _sendStatus({
     Map<String, dynamic> extra = const {},
   }) async {
-    await bootstrap.networkService.sendStatus({
+    final payload = {
       'type': 'status',
       'mode': state.mode.name,
       'isRunning': state.isRunning,
@@ -253,7 +259,10 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       'trackTargetType': state.trackTargetType.name,
       'trackDevice': state.trackDevice.name,
       'trackSpeedMode': state.trackSpeedMode.name,
-      'tracking': state.mode == RobotMode.track && state.isRunning ? state.trackingStatus : 'none',
+      'tracking':
+          state.mode == RobotMode.track && state.isRunning
+              ? state.trackingStatus
+              : 'none',
       'usbConnected': state.connection.usbConnected,
       'bluetoothConnected': state.connection.bluetoothConnected,
       'serverRunning': state.connection.videoStable,
@@ -266,7 +275,9 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
       'backendModelId': state.backendModelId,
       'previewFrameBase64': state.videoEnabled ? state.previewFrameBase64 : null,
       ...extra,
-    });
+    };
+    await bootstrap.networkService.sendStatus(payload);
+    await bootstrap.pcLinkService.sendStatus(payload);
   }
 
   Future<void> _configureBackendForMode() async {
@@ -366,6 +377,21 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (!nextConnection.usbConnected && state.isRunning) {
       unawaited(_stopRobotActivity(disarm: true));
+    }
+  }
+
+  Future<void> _syncPreviewForUsbConnection(bool connected) async {
+    if (connected) {
+      await bootstrap.cameraService.startPreview();
+      state.setVideoPhase(VideoPhase.live);
+      await _sendStatus();
+      return;
+    }
+
+    if (!state.isRunning) {
+      await bootstrap.cameraService.stopPreview();
+      state.setVideoPhase(VideoPhase.stopped);
+      await _sendStatus();
     }
   }
 
@@ -597,12 +623,21 @@ class RobotCameraController extends ChangeNotifier with WidgetsBindingObserver {
     _lastSentRight = isStop ? 0 : right;
   }
 
-  Future<void> _stopRobotActivity({required bool disarm}) async {
+  Future<void> _stopRobotActivity({
+    required bool disarm,
+    bool preservePreviewIfUsbConnected = false,
+  }) async {
     _gamepadInactivityTimer?.cancel();
     await bootstrap.cameraService.stopBackendStream();
     await bootstrap.backendService.stopSession();
     await bootstrap.robotConnectionService.stopDrive();
-    await bootstrap.cameraService.stopPreview();
+    if (preservePreviewIfUsbConnected && bootstrap.robotConnectionService.usbConnected) {
+      await bootstrap.cameraService.startPreview();
+      state.setVideoPhase(VideoPhase.live);
+    } else {
+      await bootstrap.cameraService.stopPreview();
+      state.setVideoPhase(VideoPhase.stopped);
+    }
     state.stopRobot();
     state.setLastRejectReason(null);
     _lastSentLeft = 0;

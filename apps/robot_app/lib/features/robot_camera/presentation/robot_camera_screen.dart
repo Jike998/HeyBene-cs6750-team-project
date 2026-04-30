@@ -84,7 +84,7 @@ class _RobotCameraScreenState extends State<RobotCameraScreen> with SingleTicker
         final connection = connectionController.snapshot;
         final liveCameraController = cameraController.bootstrap.cameraService.controller;
         final cameraReady = liveCameraController != null && liveCameraController.value.isInitialized;
-        final shouldShowLivePreview = state.isRunning && cameraReady;
+        final shouldShowLivePreview = state.connection.usbConnected && cameraReady;
 
         if (_transitionMode != state.mode && _modeFx.value == 0) {
           _transitionMode = state.mode;

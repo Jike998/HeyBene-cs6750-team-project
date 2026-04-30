@@ -198,11 +198,15 @@ class ControlState extends ChangeNotifier {
     bool? usbConnected,
     bool? bluetoothConnected,
     bool? videoStable,
+    bool? webSocketConnected,
+    String? webSocketTarget,
   }) {
     final next = connection.copyWith(
       usbConnected: usbConnected,
       bluetoothConnected: bluetoothConnected,
       videoStable: videoStable,
+      webSocketConnected: webSocketConnected,
+      webSocketTarget: webSocketTarget,
     );
     if (next == connection) return;
     connection = next;
